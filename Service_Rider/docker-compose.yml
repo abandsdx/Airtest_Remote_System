@@ -1,0 +1,15 @@
+﻿services:
+  rider-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: rider-server
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DEVICE_SHARED_KEY: "nuwa8888"
+      WS_FRAME_DEBUG: "1"
+    volumes:
+      - /opt/rider/data:/usr/src/app/data
+      - /opt/rider/recordings:/usr/src/app/recordings
+    restart: unless-stopped

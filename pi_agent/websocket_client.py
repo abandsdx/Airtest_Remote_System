@@ -43,8 +43,14 @@ class AgentClient:
         )
         self._heartbeat_task: Optional[asyncio.Task] = None
 
+    def _device_headers(self) -> Dict[str, str]:
+        return {"X-Device-Key": self.config.device_shared_key}
+
     async def _send_signaling(self, payload: dict) -> None:
         await self.send({"type": "signaling", "payload": payload})
+
+    async def _send_log(self, text: str) -> None:
+        await self.send({"type": "log", "message": text})
 
     async def send(self, payload: Dict[str, Any]) -> None:
         if not self.ws:
@@ -78,7 +84,7 @@ class AgentClient:
         task_id = message["task_id"]
         script_url = message["script_url"]
         script_name = message.get("script_name", "script.air")
-        variables = message.get("variables", {})
+        variables = message.get("vars", message.get("variables", {}))
         base_http = _ws_to_http(self.config.server_host)
         full_script_url = script_url if script_url.startswith("http") else urljoin(base_http, script_url)
 
@@ -89,10 +95,15 @@ class AgentClient:
             )
             return
         try:
-            script_path = self.airtest_runner.download_script(full_script_url, script_name)
-            result = self.airtest_runner.run(script_path, self.device_serial, task_id)
+            script_path = await asyncio.to_thread(
+                self.airtest_runner.download_script,
+                full_script_url,
+                script_name,
+                self._device_headers(),
+            )
+            result = await self.airtest_runner.run(script_path, self.device_serial, task_id, variables=variables, log_callback=self._send_log)
             status = result["status"]
-            message_text = result.get("stdout", "")
+            message_text = result.get("stdout_tail", "")
             await self.send(
                 {
                     "type": "task_result",
@@ -102,20 +113,39 @@ class AgentClient:
                     "artifacts": {"log_dir": result.get("log_dir", "")},
                 }
             )
-            self._upload_artifacts(task_id, status, message_text, Path(result["stdout"]))
+            await asyncio.to_thread(
+                self._upload_artifacts,
+                task_id,
+                status,
+                message_text,
+                Path(result["stdout_path"]),
+                result.get("report_zip"),
+            )
         except Exception as exc:
             logger.exception("Task failed")
             await self.send({"type": "task_result", "task_id": task_id, "status": "failed", "message": str(exc)})
 
-    def _upload_artifacts(self, task_id: str, status: str, message: str, log_path: Path) -> None:
+    def _upload_artifacts(self, task_id: str, status: str, message: str, log_path: Path, report_path: Optional[str] = None) -> None:
         base_http = _ws_to_http(self.config.server_host)
         url = urljoin(base_http, f"/api/tasks/{task_id}/result")
-        files = {"log_file": open(log_path, "rb")} if log_path.exists() else None
+        files = {}
+        if log_path.exists():
+            files["log_file"] = open(log_path, "rb")
+        if report_path and Path(report_path).exists():
+            files["report_file"] = open(report_path, "rb")
+        
         try:
-            requests.post(url, data={"status": status, "message": message}, files=files, timeout=15)
+            response = requests.post(
+                url,
+                data={"status": status, "message": message},
+                files=files,
+                headers=self._device_headers(),
+                timeout=60,
+            )
+            response.raise_for_status()
         finally:
-            if files:
-                files["log_file"].close()
+            for f in files.values():
+                f.close()
 
     async def handle_message(self, message: Dict[str, Any]) -> None:
         msg_type = message.get("type")
@@ -131,21 +161,44 @@ class AgentClient:
     async def _heartbeat(self) -> None:
         while True:
             await asyncio.sleep(5)
-            await self.send({"type": "heartbeat", "meta": {"device_serial": self.device_serial}})
+            await self.send({
+                "type": "status",
+                "streaming": False,
+                "camera": False,
+                "mic": False
+            })
 
     async def run(self) -> None:
         while True:
             try:
-                ws_url = f"{self.config.server_host}/ws/agent/{self.config.agent_id}"
+                # Service Rider specific path
+                ws_url = f"{self.config.server_host}/ws/device"
                 logger.info("Connecting to %s", ws_url)
                 async with websockets.connect(ws_url) as ws:
                     self.ws = ws
-                    await ws.send(json.dumps({"type": "hello", "agent_id": self.config.agent_id}))
+                    # Service Rider auth format for device
+                    await ws.send(json.dumps({
+                        "type": "hello", 
+                        "token": self.config.device_shared_key,
+                        "deviceId": self.config.agent_id,
+                        "info": {
+                            "name": f"Pi Agent {self.config.agent_id}",
+                            "model": "Raspberry Pi",
+                            "manufacturer": "Raspberry Pi Foundation",
+                            "osVersion": "Linux",
+                            "appVersion": "1.0.0"
+                        }
+                    }))
                     self._heartbeat_task = asyncio.create_task(self._heartbeat())
                     while True:
                         raw = await ws.recv()
                         try:
                             message = json.loads(raw)
+                            # Handle Service Rider welcome message
+                            if message.get("type") == "welcome":
+                                logger.info("Successfully connected and authenticated with Service Rider")
+                                continue
+                            
                             await self.handle_message(message)
                         except json.JSONDecodeError:
                             logger.warning("Invalid message: %s", raw)

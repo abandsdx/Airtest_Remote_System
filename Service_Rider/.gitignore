@@ -1,0 +1,73 @@
+# General
+.DS_Store
+Thumbs.db
+*.swp
+*~
+desktop.ini
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.sublime-*
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+.pnpm-debug.log
+
+# Android (root level ignores if any)
+.gradle/
+local.properties
+*.apk
+*.aab
+*.class
+*.dex
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.jks
+*.keystore
+
+# Python (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.venv/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# Sensitive
+.env
+.env.*
+! .env.example
+secrets/
+*.pem
+*.key
+
+# OS
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Temporary
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+
+# Data & Recordings
+data/
+recordings/
+*.rdr
