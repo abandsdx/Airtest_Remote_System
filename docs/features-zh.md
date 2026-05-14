@@ -99,6 +99,355 @@ Agent 位於 `airtest_agent`，是 Python 執行端。
 10. Agent 產生 report zip 並呼叫 `/api/tasks/:id/result` 上傳結果。
 11. Console 顯示任務成功、失敗或停止。
 
+## 任務 JSON 變數用法
+
+Web Console 的 Airtest 區塊有一個變數輸入欄，placeholder 類似：
+
+```json
+{"var": "val"}
+```
+
+這個欄位用來為「單次任務」傳入參數。前端會把它放進 `run_task.vars`，Agent 收到後會在執行 `airtest run` 前，把每個 key/value 寫進該次 Airtest subprocess 的環境變數。
+
+資料流如下：
+
+```text
+Web Console JSON input
+  -> run_task.vars
+  -> Airtest Agent
+  -> subprocess env
+  -> airtest run <script>
+  -> Airtest Python script uses os.getenv(...)
+```
+
+這些變數只存在於該次 `airtest run` 程序，不會永久寫入 Agent 主機的系統環境變數，也不會自動儲存到 Server。
+
+### UI 輸入格式
+
+必須輸入合法 JSON object。可以空白；空白代表不傳任何變數。
+
+基本範例：
+
+```json
+{
+  "ENV": "qa",
+  "ROBOT_ID": "robot-01",
+  "ACCOUNT": "test_user",
+  "PASSWORD": "123456",
+  "RETRY": 3,
+  "DEBUG": true
+}
+```
+
+一行格式也可以：
+
+```json
+{"ENV":"qa","ROBOT_ID":"robot-01","RETRY":3,"DEBUG":true}
+```
+
+不合法範例：
+
+```json
+{ENV:"qa"}
+```
+
+原因：JSON key 必須使用雙引號。
+
+```json
+{
+  "ENV": "qa",
+}
+```
+
+原因：JSON 最後一個欄位後面不能有逗號。
+
+```text
+ENV=qa
+```
+
+原因：這不是 JSON object。
+
+### 變數命名建議
+
+建議使用環境變數慣例：
+
+- 使用大寫英文字母、數字、底線。
+- 例如 `ENV`、`ROBOT_ID`、`BASE_URL`、`RETRY`。
+- 不建議使用空白、減號、中文或特殊符號。
+- 不建議使用系統常見保留名稱，例如 `PATH`、`HOME`、`USER`、`TEMP`，避免覆蓋 subprocess 原本環境。
+
+建議：
+
+```json
+{
+  "BASE_URL": "https://qa.example.com",
+  "DEVICE_GROUP": "factory-a"
+}
+```
+
+不建議：
+
+```json
+{
+  "base-url": "https://qa.example.com",
+  "測試環境": "qa",
+  "PATH": "custom"
+}
+```
+
+### Airtest 腳本讀取方式
+
+在 `.air` 腳本的 Python 程式中使用 `os.getenv()` 讀取。
+
+```python
+# -*- encoding=utf8 -*-
+from airtest.core.api import *
+import os
+
+auto_setup(__file__)
+
+env = os.getenv("ENV", "dev")
+robot_id = os.getenv("ROBOT_ID", "unknown")
+account = os.getenv("ACCOUNT", "")
+password = os.getenv("PASSWORD", "")
+
+print("ENV =", env)
+print("ROBOT_ID =", robot_id)
+```
+
+`os.getenv("KEY", "default")` 的第二個參數是預設值。當 UI 沒有傳該變數時，腳本會使用預設值。
+
+### 型別轉換
+
+Agent 會把 JSON 的 value 轉成字串後放進環境變數。因此 Airtest 腳本讀到的值都是 string。
+
+例如 UI 輸入：
+
+```json
+{
+  "RETRY": 3,
+  "DEBUG": true,
+  "TIMEOUT": 15.5
+}
+```
+
+Airtest 腳本中：
+
+```python
+import os
+
+retry = int(os.getenv("RETRY", "1"))
+debug = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
+timeout = float(os.getenv("TIMEOUT", "10"))
+```
+
+注意布林值在 Python 中可能會變成 `"True"` / `"False"`，所以建議使用 `.lower()` 後再判斷。
+
+### 傳入測試環境
+
+UI：
+
+```json
+{
+  "ENV": "qa",
+  "BASE_URL": "https://qa-api.example.com"
+}
+```
+
+Airtest：
+
+```python
+import os
+
+env = os.getenv("ENV", "dev")
+base_url = os.getenv("BASE_URL", "https://dev-api.example.com")
+
+print(f"Run on {env}: {base_url}")
+```
+
+### 傳入帳號密碼
+
+UI：
+
+```json
+{
+  "ACCOUNT": "qa_user_01",
+  "PASSWORD": "qa_password"
+}
+```
+
+Airtest：
+
+```python
+import os
+from airtest.core.api import *
+
+account = os.getenv("ACCOUNT", "")
+password = os.getenv("PASSWORD", "")
+
+touch(Template("account_input.png"))
+text(account)
+touch(Template("password_input.png"))
+text(password)
+```
+
+注意：目前系統沒有加密儲存任務變數，也可能出現在瀏覽器、Server/Agent 記憶體或 log 中。正式密碼、token、API key 不建議直接放在 UI 變數欄，除非部署環境已受控且你接受這個風險。
+
+### 傳入不同機台參數
+
+多台 Agent 同時執行時，每次 Run Task 都可以輸入不同 JSON。變數只會傳給該次任務，不會影響其他機台。
+
+Agent A：
+
+```json
+{
+  "ROBOT_ID": "robot-a",
+  "ENV": "qa"
+}
+```
+
+Agent B：
+
+```json
+{
+  "ROBOT_ID": "robot-b",
+  "ENV": "qa"
+}
+```
+
+Airtest：
+
+```python
+import os
+
+robot_id = os.getenv("ROBOT_ID", "unknown")
+print("Current robot:", robot_id)
+```
+
+### 傳入複雜設定
+
+環境變數本質上是字串。若要傳入多層設定，不建議直接放 JSON object：
+
+```json
+{
+  "CONFIG": {
+    "base_url": "https://qa.example.com",
+    "timeout": 30
+  }
+}
+```
+
+目前程式會把 value 用 Python `str(value)` 轉成字串，巢狀 object 會變成類似 `"{'base_url': 'https://qa.example.com', 'timeout': 30}"`，這不是標準 JSON 字串。
+
+建議改成傳 JSON 字串：
+
+```json
+{
+  "CONFIG_JSON": "{\"base_url\":\"https://qa.example.com\",\"timeout\":30}"
+}
+```
+
+Airtest：
+
+```python
+import json
+import os
+
+config = json.loads(os.getenv("CONFIG_JSON", "{}"))
+base_url = config.get("base_url", "https://dev.example.com")
+timeout = int(config.get("timeout", 10))
+```
+
+如果設定很多，也可以把設定檔放在腳本包內，UI 只傳選擇哪個設定檔：
+
+UI：
+
+```json
+{
+  "CONFIG_NAME": "qa"
+}
+```
+
+Airtest：
+
+```python
+import json
+import os
+from pathlib import Path
+
+config_name = os.getenv("CONFIG_NAME", "dev")
+config_path = Path(__file__).parent / "configs" / f"{config_name}.json"
+config = json.loads(config_path.read_text(encoding="utf-8"))
+```
+
+### 預設值與必填檢查
+
+建議在 Airtest 腳本集中處理設定，避免變數缺漏時任務跑到一半才失敗。
+
+```python
+import os
+
+def required_env(name):
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+ENV = os.getenv("ENV", "dev")
+ACCOUNT = required_env("ACCOUNT")
+PASSWORD = required_env("PASSWORD")
+RETRY = int(os.getenv("RETRY", "1"))
+```
+
+### 常見錯誤
+
+| 問題 | 原因 | 解法 |
+| --- | --- | --- |
+| UI 提示 `Variables must be valid JSON` | JSON 格式錯誤 | 使用雙引號、移除尾端逗號、確認最外層是 object |
+| 腳本讀不到變數 | key 名稱不一致 | UI 的 `ENV` 必須對應腳本的 `os.getenv("ENV")` |
+| 數字比較怪怪的 | `os.getenv()` 讀到的是字串 | 使用 `int()` / `float()` 轉型 |
+| 布林判斷錯誤 | `"False"` 字串在 Python if 中仍為 truthy | 用 `.lower() in ("true", "1", "yes")` |
+| 複雜 JSON 解析失敗 | 巢狀 object 被轉成 Python 字串格式 | 傳 JSON 字串，腳本用 `json.loads()` |
+| 密碼出現在 log | 腳本或系統印出了環境變數 | 不要 print 敏感值，正式密碼不要直接放 UI 變數欄 |
+
+### 建議的腳本模板
+
+```python
+# -*- encoding=utf8 -*-
+from airtest.core.api import *
+import json
+import os
+
+auto_setup(__file__)
+
+def getenv_bool(name, default=False):
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.lower() in ("true", "1", "yes", "y")
+
+def getenv_int(name, default):
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    return int(raw)
+
+ENV = os.getenv("ENV", "dev")
+ROBOT_ID = os.getenv("ROBOT_ID", "unknown")
+RETRY = getenv_int("RETRY", 1)
+DEBUG = getenv_bool("DEBUG", False)
+CONFIG = json.loads(os.getenv("CONFIG_JSON", "{}"))
+
+print("ENV =", ENV)
+print("ROBOT_ID =", ROBOT_ID)
+print("RETRY =", RETRY)
+print("DEBUG =", DEBUG)
+
+for attempt in range(RETRY):
+    print(f"Attempt {attempt + 1}/{RETRY}")
+    # Airtest steps here
+```
+
 ## 權限與角色
 
 目前角色：

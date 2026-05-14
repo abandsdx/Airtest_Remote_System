@@ -69,6 +69,7 @@ RIDER_HOST_PORT=13001 DEVICE_SHARED_KEY=change-me bash deploy-web.sh
 8. 從 Airtest Logs 查看即時輸出與任務結果。
 
 軟體功能範圍請看 [docs/features-zh.md](docs/features-zh.md)。
+JSON 變數的詳細用法請看 [docs/features-zh.md#任務-json-變數用法](docs/features-zh.md#任務-json-變數用法)。
 
 ## 重要限制
 
