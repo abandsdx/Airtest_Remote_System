@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<full-backup-content>
-    <!-- Exclude specific shared preferences that contain sensitive information. -->
-    <!-- <exclude domain="sharedpref" path="my_private_prefs.xml"/> -->
-</full-backup-content>

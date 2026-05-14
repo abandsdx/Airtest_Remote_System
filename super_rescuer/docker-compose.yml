@@ -1,0 +1,18 @@
+﻿services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: super-rescuer-server
+    ports:
+      # Host port 3000 is commonly occupied by Gitea or other services.
+      # Override with RIDER_HOST_PORT/RIDER_BIND_ADDR if this host also uses 13000.
+      - "${RIDER_BIND_ADDR:-0.0.0.0}:${RIDER_HOST_PORT:-13000}:3000"
+    environment:
+      DEVICE_SHARED_KEY: "${DEVICE_SHARED_KEY:-nuwa8888}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-*}"
+      WS_FRAME_DEBUG: "${WS_FRAME_DEBUG:-1}"
+    volumes:
+      - "${SUPER_RESCUER_DATA_DIR:-/opt/super-rescuer/data}:/usr/src/app/data"
+      - "${SUPER_RESCUER_RECORDINGS_DIR:-/opt/super-rescuer/recordings}:/usr/src/app/recordings"
+    restart: unless-stopped

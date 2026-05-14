@@ -1,0 +1,43 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.iml
+
+# Logs and env
+*.log
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Runtime data
+data/
+recordings/
+reports/
+scripts/
+*.rdr

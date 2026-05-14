@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Airtest Remote Console - 自動化測試腳本派發中心" />
+  <meta name="keywords" content="Airtest, Remote Control, Automation, 任務派發" />
+  <title>Airtest Remote Console</title>
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div id="loginView" class="panel">
+    <h1 id="loginTitle">Airtest Remote Console</h1>
+    <p class="muted">自動化測試腳本派發中心</p>
+    <form id="loginForm" onsubmit="return false;">
+      <label>
+        Username
+        <input id="username" type="text" placeholder="admin" autocomplete="username" />
+      </label>
+      <label>
+        Password
+        <input id="password" type="password" placeholder="admin123" autocomplete="current-password" />
+      </label>
+      <button id="loginButton" type="submit">Sign In</button>
+    </form>
+    <div id="loginError" class="error"></div>
+    <div id="serverUrlSettings" class="hidden">
+      <label>
+        Server URL
+        <input id="serverUrl" type="text" placeholder="https://fleetmind.duckdns.org" />
+      </label>
+      <div class="inline-actions">
+        <button id="saveServerUrl" class="ghost">Save Server URL</button>
+        <button id="resetServerUrl" class="ghost">Reset Default</button>
+      </div>
+      <div id="serverUrlStatus" class="muted"></div>
+      <div class="muted">Shortcut: Ctrl+Shift+U</div>
+    </div>
+  </div>
+
+  <div id="reconnectBanner" class="reconnect-banner">⚠ Connection lost. Reconnecting...</div>
+
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loader-content">
+      <div class="spinner"></div>
+      <div class="loader-text">Initializing Airtest Console...</div>
+    </div>
+  </div>
+
+  <div id="appView" class="hidden">
+    <header class="topbar">
+      <div class="brand">Airtest Console <span id="wsStatus" class="ws-status disconnected"
+          title="WebSocket disconnected"></span></div>
+      <div class="session">
+        <a id="userManagementLink" class="ghost link-button hidden" href="user-management.html">User Management</a>
+        <a class="ghost link-button" href="audit.html">Audit Log</a>
+        <span id="sessionUser"></span>
+        <button id="logoutButton" class="ghost">Sign Out</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="column">
+        <div class="card">
+          <h2>Device Wall</h2>
+          <div id="deviceList" class="grid"></div>
+        </div>
+
+
+
+        <div class="card">
+          <h2>Airtest</h2>
+          <div class="controls" style="margin-bottom: 8px;">
+            <input type="file" id="airtestUploadInput" accept=".air,.zip" style="width: 100%;" />
+            <button id="airtestUploadBtn">Upload Script</button>
+          </div>
+          <div class="controls" style="margin-bottom: 8px;">
+            <select id="airtestScriptSelect" style="flex: 1;">
+              <option value="">-- Select Script --</option>
+            </select>
+            <button id="airtestRefreshBtn" class="ghost">↺</button>
+          </div>
+          <div class="terminal-input-area" style="margin-bottom: 8px;">
+            <input id="airtestVarsInput" type="text" placeholder='{"var": "val"}' />
+            <button id="airtestRunBtn">Run Task</button>
+            <button id="airtestStopBtn" class="danger" disabled>Stop Task</button>
+          </div>
+        </div>
+
+
+
+        <!-- Delete Confirmation Modal -->
+        <div id="deleteModal" class="modal-overlay hidden">
+          <div class="modal-card">
+            <h3>Confirm Delete</h3>
+            <p id="deleteModalText">Are you sure?</p>
+            <div class="modal-actions">
+              <button id="deleteCancelBtn" class="ghost">Cancel</button>
+              <button id="deleteConfirmBtn" class="danger">Delete</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="column wide">
+
+
+        <div class="card">
+          <h2>Airtest Logs</h2>
+          <div id="airtestLogsOutput" class="terminal-output"
+            style="height: 200px; background-color: #0d1117; color: #c9d1d9; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 13px;">
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+
+</html>
