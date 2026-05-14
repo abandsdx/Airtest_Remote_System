@@ -161,8 +161,24 @@ function addAudit(entry) {
 
 
 function addScript(script) {
+  if (!Array.isArray(data.scripts)) {
+    data.scripts = [];
+  }
   data.scripts.push(script);
   save();
+}
+
+function deleteScript(id) {
+  if (!Array.isArray(data.scripts)) {
+    data.scripts = [];
+  }
+  const index = data.scripts.findIndex((script) => script.id === id);
+  if (index === -1) {
+    return null;
+  }
+  const [script] = data.scripts.splice(index, 1);
+  save();
+  return script;
 }
 
 load();
@@ -187,4 +203,5 @@ module.exports = {
   addAudit,
   deleteUser,
   addScript,
+  deleteScript,
 };

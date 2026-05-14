@@ -193,12 +193,13 @@ python -m airtest_agent.main
 2. 登入 `http://<server-ip>:13000`。
 3. 啟動 Airtest Agent，並確認 Device Wall 出現該 Agent。
 4. 上傳 `.air` 或 `.zip` 腳本。
-5. 選取 Agent 與腳本。
-6. 可選：輸入 JSON 變數，例如 `{"ENV":"qa","ROBOT_ID":"robot-01"}`。這些變數會以環境變數形式傳給該次 Airtest 執行程序；詳細格式、型別轉換與腳本讀取方式請看 [features-zh.md](features-zh.md#任務-json-變數用法)。
-7. 點擊 Run Task。
-8. 多台 Agent 可同時執行；Device Wall 會顯示各台的 Airtest 狀態。
-9. 任務執行中可對指定 Agent 點擊 Stop Task，中止該台目前 Airtest subprocess。
-10. 從 Airtest Logs 查看即時輸出與任務結果。
+5. 在 Uploaded Scripts 清單確認上傳時間、大小與檔案狀態；需要時可下載或刪除舊腳本。
+6. 選取 Agent 與腳本。
+7. 可選：輸入 JSON 變數，例如 `{"ENV":"qa","ROBOT_ID":"robot-01"}`。這些變數會以環境變數形式傳給該次 Airtest 執行程序；詳細格式、型別轉換與腳本讀取方式請看 [features-zh.md](features-zh.md#任務-json-變數用法)。
+8. 點擊 Run Task。
+9. 多台 Agent 可同時執行；Device Wall 會顯示各台的 Airtest 狀態。
+10. 任務執行中可對指定 Agent 點擊 Stop Task，中止該台目前 Airtest subprocess。
+11. 從 Airtest Logs 查看即時輸出與任務結果。
 
 ## 4. 維運注意事項
 

@@ -63,10 +63,11 @@ RIDER_HOST_PORT=13001 DEVICE_SHARED_KEY=change-me bash deploy-web.sh
 2. 在執行端主機安裝 Python 依賴與 ADB。
 3. 啟動 `airtest_agent`，並確認 `DEVICE_SHARED_KEY` 與 server 相同。
 4. 在 Web Console 上傳 `.air` 或 `.zip` 腳本。
-5. 選取上線的 Agent、選取腳本，必要時輸入 JSON 變數後執行。
-6. 多台 Agent 可同時執行；Device Wall 會顯示各台的 Airtest 狀態。
-7. 任務執行中可對指定 Agent 按 Stop Task，中止該台目前 Airtest subprocess。
-8. 從 Airtest Logs 查看即時輸出與任務結果。
+5. 在 Uploaded Scripts 清單確認上傳時間、大小與檔案狀態；需要時可下載或刪除舊腳本。
+6. 選取上線的 Agent、選取腳本，必要時輸入 JSON 變數後執行。
+7. 多台 Agent 可同時執行；Device Wall 會顯示各台的 Airtest 狀態。
+8. 任務執行中可對指定 Agent 按 Stop Task，中止該台目前 Airtest subprocess。
+9. 從 Airtest Logs 查看即時輸出與任務結果。
 
 軟體功能範圍請看 [docs/features-zh.md](docs/features-zh.md)。
 JSON 變數的詳細用法請看 [docs/features-zh.md#任務-json-變數用法](docs/features-zh.md#任務-json-變數用法)。

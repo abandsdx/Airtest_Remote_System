@@ -418,8 +418,31 @@ app.get('/api/audits', authRequired, (req, res) => {
   res.json({ audits: store.data.audits.slice(-500) });
 });
 
+function serializeScript(script) {
+  let size = script.size;
+  let fileExists = false;
+  if (script.path && fs.existsSync(script.path)) {
+    fileExists = true;
+    if (typeof size !== 'number') {
+      size = fs.statSync(script.path).size;
+    }
+  }
+
+  return {
+    id: script.id,
+    filename: script.filename,
+    stored_name: script.stored_name,
+    size: typeof size === 'number' ? size : null,
+    fileExists,
+    uploadedBy: script.uploadedBy || null,
+    createdAt: script.createdAt,
+    updatedAt: script.updatedAt,
+  };
+}
+
 app.get('/api/scripts', authRequired, (req, res) => {
-  res.json({ scripts: store.data.scripts || [] });
+  const scripts = (store.data.scripts || []).map(serializeScript);
+  res.json({ scripts });
 });
 
 app.post('/api/scripts/upload', authRequired, uploadScripts.single('file'), (req, res) => {
@@ -428,7 +451,8 @@ app.post('/api/scripts/upload', authRequired, uploadScripts.single('file'), (req
   }
 
   const validExts = ['.air', '.zip'];
-  if (!validExts.some(ext => req.file.originalname.endsWith(ext))) {
+  const originalNameLower = req.file.originalname.toLowerCase();
+  if (!validExts.some(ext => originalNameLower.endsWith(ext))) {
     fs.unlinkSync(req.file.path);
     return res.status(400).json({ error: 'Only .air or .zip files are accepted' });
   }
@@ -438,12 +462,23 @@ app.post('/api/scripts/upload', authRequired, uploadScripts.single('file'), (req
     filename: req.file.originalname,
     stored_name: req.file.filename,
     path: req.file.path,
+    size: req.file.size,
+    uploadedBy: req.user.username,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
 
   store.addScript(script);
-  return res.json({ script });
+  store.addAudit({
+    id: crypto.randomUUID(),
+    ts: Date.now(),
+    actor: req.user.username,
+    action: 'script-upload',
+    deviceId: null,
+    meta: req.file.originalname,
+  });
+
+  return res.json({ script: serializeScript(script) });
 });
 
 app.get('/api/scripts/:id', deviceOrUserAuthRequired, (req, res) => {
@@ -457,6 +492,37 @@ app.get('/api/scripts/:id', deviceOrUserAuthRequired, (req, res) => {
   }
 
   res.download(script.path, script.filename);
+});
+
+app.delete('/api/scripts/:id', authRequired, (req, res) => {
+  const scripts = store.data.scripts || [];
+  const script = scripts.find((item) => item.id === req.params.id);
+  if (!script) {
+    return res.status(404).json({ error: 'Script not found' });
+  }
+
+  let fileDeleted = false;
+  if (script.path && fs.existsSync(script.path)) {
+    try {
+      fs.unlinkSync(script.path);
+      fileDeleted = true;
+    } catch (err) {
+      return res.status(500).json({ error: 'file_delete_failed', message: err.message });
+    }
+  }
+
+  store.deleteScript(req.params.id);
+
+  store.addAudit({
+    id: crypto.randomUUID(),
+    ts: Date.now(),
+    actor: req.user.username,
+    action: 'script-delete',
+    deviceId: null,
+    meta: script.filename,
+  });
+
+  return res.json({ status: 'ok', script: serializeScript(script), fileDeleted });
 });
 
 const reportUploads = multer({ dest: path.join(__dirname, '..', 'reports') });

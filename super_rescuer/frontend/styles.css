@@ -769,6 +769,89 @@ button.danger:hover {
   font-size: 15px;
 }
 
+/* Airtest Script Manager */
+.script-manager {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.script-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.script-manager-header h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.script-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.script-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.script-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.script-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.script-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.script-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.script-actions button {
+  margin-top: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.script-empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
 /* ======== Viewer & Layout Modes ======== */
 .viewer-body {
   position: relative;

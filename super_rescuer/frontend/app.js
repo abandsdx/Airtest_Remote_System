@@ -25,6 +25,8 @@ const airtestRefreshBtn = document.getElementById('airtestRefreshBtn');
 const airtestVarsInput = document.getElementById('airtestVarsInput');
 const airtestRunBtn = document.getElementById('airtestRunBtn');
 const airtestStopBtn = document.getElementById('airtestStopBtn');
+const airtestScriptList = document.getElementById('airtestScriptList');
+const airtestScriptCount = document.getElementById('airtestScriptCount');
 const airtestLogsOutput = document.getElementById('airtestLogsOutput');
 
 const DEFAULT_SERVER_URL = window.location.origin;
@@ -32,6 +34,7 @@ let apiBase = '';
 let authToken = '';
 let ws = null;
 let devices = [];
+let airtestScripts = [];
 let wsHeartbeatTimer = null;
 let wsReconnectTimer = null;
 let wsReconnectAttempts = 0;
@@ -98,6 +101,26 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;',
   })[char]);
+}
+
+function formatTimestamp(value) {
+  if (!value) return 'Unknown time';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+  return date.toLocaleString();
+}
+
+function formatBytes(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'Unknown size';
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let size = value / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
 }
 
 function setAdminNavigationVisibility() {
@@ -402,6 +425,7 @@ async function fetchAirtestScripts() {
   try {
     const data = await apiRequest('/api/scripts');
     const scripts = data.scripts || [];
+    airtestScripts = scripts;
     airtestScriptSelect.innerHTML = '<option value="">-- Select Script --</option>';
     scripts.forEach(script => {
       const option = document.createElement('option');
@@ -409,8 +433,107 @@ async function fetchAirtestScripts() {
       option.textContent = script.filename;
       airtestScriptSelect.appendChild(option);
     });
+    renderAirtestScriptList();
   } catch (err) {
     console.error('Failed to load airtest scripts:', err);
+    if (airtestScriptList) {
+      airtestScriptList.innerHTML = '<div class="script-empty">Unable to load scripts.</div>';
+    }
+  }
+}
+
+function renderAirtestScriptList() {
+  if (!airtestScriptList) return;
+  if (airtestScriptCount) {
+    airtestScriptCount.textContent = `${airtestScripts.length} file${airtestScripts.length === 1 ? '' : 's'}`;
+  }
+
+  if (!airtestScripts.length) {
+    airtestScriptList.innerHTML = '<div class="script-empty">No uploaded scripts.</div>';
+    return;
+  }
+
+  airtestScriptList.innerHTML = '';
+  const sortedScripts = [...airtestScripts].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  sortedScripts.forEach((script) => {
+    const item = document.createElement('div');
+    item.className = 'script-item';
+    item.dataset.scriptId = script.id;
+    const safeFilename = escapeHtml(script.filename || '');
+    const uploadedAt = escapeHtml(formatTimestamp(script.createdAt));
+    const updatedAt = script.updatedAt && script.updatedAt !== script.createdAt
+      ? `Updated ${escapeHtml(formatTimestamp(script.updatedAt))}`
+      : '';
+    const uploadedBy = script.uploadedBy ? ` by ${escapeHtml(script.uploadedBy)}` : '';
+    const size = escapeHtml(formatBytes(script.size));
+    const missingClass = script.fileExists === false ? ' text-danger' : '';
+    const missingText = script.fileExists === false ? 'Missing file' : size;
+
+    item.innerHTML = `
+      <div class="script-main">
+        <div class="script-name" title="${safeFilename}">${safeFilename}</div>
+        <div class="script-meta">
+          Uploaded ${uploadedAt}${uploadedBy}
+          <span class="${missingClass}">${escapeHtml(missingText)}</span>
+          ${updatedAt ? `<span>${updatedAt}</span>` : ''}
+        </div>
+      </div>
+      <div class="script-actions">
+        <button class="ghost script-select-btn" type="button">Select</button>
+        <button class="ghost script-download-btn" type="button" ${script.fileExists === false ? 'disabled' : ''}>Download</button>
+        <button class="danger script-delete-btn" type="button">Delete</button>
+      </div>
+    `;
+
+    item.querySelector('.script-select-btn')?.addEventListener('click', () => {
+      airtestScriptSelect.value = script.id;
+    });
+    item.querySelector('.script-download-btn')?.addEventListener('click', () => {
+      downloadAirtestScript(script);
+    });
+    item.querySelector('.script-delete-btn')?.addEventListener('click', () => {
+      deleteAirtestScript(script);
+    });
+    airtestScriptList.appendChild(item);
+  });
+}
+
+async function downloadAirtestScript(script) {
+  try {
+    const response = await fetch(`${apiBase}/api/scripts/${script.id}`, {
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = script.filename || 'script.air';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deleteAirtestScript(script) {
+  const confirmed = window.confirm(`Delete uploaded script "${script.filename}"?`);
+  if (!confirmed) return;
+
+  try {
+    await apiRequest(`/api/scripts/${script.id}`, { method: 'DELETE' });
+    if (airtestScriptSelect.value === script.id) {
+      airtestScriptSelect.value = '';
+    }
+    await fetchAirtestScripts();
+  } catch (err) {
+    alert(err.message);
   }
 }
 

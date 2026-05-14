@@ -17,6 +17,7 @@
 - 多台 Agent 可同時執行任務；每台 Agent 各自追蹤 task id 與 Running/Stopping 狀態。
 - 任務執行中可對指定 Agent 送出 Stop Task，要求該 Agent 終止目前 Airtest subprocess。
 - 上傳 `.air` 或 `.zip` 腳本。
+- 管理已上傳腳本：查看檔名、上傳時間、檔案大小、上傳者、檔案是否仍存在，並可選取、下載或刪除。
 - 任務變數輸入，格式為 JSON。
 - Airtest Logs 即時顯示 Agent 回傳的 log 與任務結果。
 - Admin 使用者可進入 User Management。
@@ -33,7 +34,9 @@ Server 位於 `super_rescuer/server`，負責 API、WebSocket relay、靜態前�
 - 以記憶體 session 驗證使用者。
 - Admin 可建立、修改、刪除使用者。
 - 儲存與列出已連線裝置狀態。
-- 接收 `.air` / `.zip` 腳本上傳。
+- 接收 `.air` / `.zip` 腳本上傳，記錄檔名、大小、上傳者與上傳時間。
+- 列出已上傳腳本的管理用 metadata，不回傳 Server 端實體檔案路徑。
+- 刪除已上傳腳本時，同時移除 metadata 與實體檔案。
 - 提供腳本下載給已登入使用者或帶有正確 `X-Device-Key` 的 Agent。
 - 透過 WebSocket 將 `run_task` 指令送到指定 Agent。
 - 透過 WebSocket 將 `stop_task` 指令送到指定 Agent；HTTP 任務結果也會帶回 `deviceId` 供多機台 UI 對應。
@@ -56,6 +59,7 @@ Server 位於 `super_rescuer/server`，負責 API、WebSocket relay、靜態前�
 | `GET /api/scripts` | 列出已上傳腳本 |
 | `POST /api/scripts/upload` | 上傳 `.air` 或 `.zip` |
 | `GET /api/scripts/:id` | 下載腳本 |
+| `DELETE /api/scripts/:id` | 刪除腳本 metadata 與實體檔案 |
 | `POST /api/tasks/:id/result` | Agent 上傳任務結果 |
 
 主要 WebSocket：
@@ -98,6 +102,36 @@ Agent 位於 `airtest_agent`，是 Python 執行端。
 9. 若操作者按 Stop Task，Agent 會中止目前 subprocess，回傳 `stopped`。
 10. Agent 產生 report zip 並呼叫 `/api/tasks/:id/result` 上傳結果。
 11. Console 顯示任務成功、失敗或停止。
+
+## 上傳腳本管理
+
+Web Console 的 Airtest 區塊會顯示 Uploaded Scripts 清單。每筆資料來自 `GET /api/scripts`。
+
+清單欄位：
+
+| 欄位 | 說明 |
+| --- | --- |
+| 檔名 | 上傳時的原始檔名 |
+| Uploaded | 上傳時間，也就是 `createdAt` |
+| 上傳者 | 上傳該腳本的登入帳號；舊資料可能沒有此欄 |
+| 大小 | 上傳時記錄的檔案大小；舊資料會盡量從實體檔案補算 |
+| Missing file | metadata 存在，但 Server 找不到實體檔案 |
+
+可用操作：
+
+| 操作 | 說明 |
+| --- | --- |
+| Select | 將該腳本帶入 Run Task 的下拉選單 |
+| Download | 透過 `GET /api/scripts/:id` 下載腳本；若實體檔案不存在則按鈕會停用 |
+| Delete | 呼叫 `DELETE /api/scripts/:id`，移除 metadata 與實體檔案 |
+
+刪除注意事項：
+
+- 刪除後該腳本不能再被新的任務執行。
+- 如果某台 Agent 已經下載並正在執行該腳本，刪除 Server 上的檔案不會自動中止該次任務；要中止請使用 Stop Task。
+- 刪除會寫入 audit log，action 為 `script-delete`。
+- 上傳會寫入 audit log，action 為 `script-upload`。
+- 目前刪除權限與上傳權限相同，只要是已登入使用者即可操作。
 
 ## 任務 JSON 變數用法
 
