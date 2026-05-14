@@ -82,8 +82,8 @@
         <div class="card">
           <h2>Airtest</h2>
           <div class="controls" style="margin-bottom: 8px;">
-            <input type="file" id="airtestUploadInput" accept=".air,.zip" style="width: 100%;" />
-            <button id="airtestUploadBtn">Upload Script</button>
+            <input type="file" id="airtestUploadInput" accept=".zip" style="width: 100%;" />
+            <button id="airtestUploadBtn">Upload ZIP</button>
             <input type="file" id="airtestDirectoryInput" webkitdirectory directory multiple style="display: none;" />
             <button id="airtestDirectoryBtn" class="ghost" type="button">Upload Folder</button>
           </div>
@@ -126,7 +126,10 @@
 
 
         <div class="card">
-          <h2>Airtest Logs</h2>
+          <div class="card-titlebar">
+            <h2>Airtest Logs</h2>
+            <button id="airtestLogsClearBtn" type="button" class="ghost compact">Clear Log</button>
+          </div>
           <div id="airtestLogsOutput" class="terminal-output"
             style="height: 200px; background-color: #0d1117; color: #c9d1d9; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 13px;">
           </div>

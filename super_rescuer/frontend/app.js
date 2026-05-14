@@ -30,6 +30,7 @@ const airtestStopBtn = document.getElementById('airtestStopBtn');
 const airtestScriptList = document.getElementById('airtestScriptList');
 const airtestScriptCount = document.getElementById('airtestScriptCount');
 const airtestLogsOutput = document.getElementById('airtestLogsOutput');
+const airtestLogsClearBtn = document.getElementById('airtestLogsClearBtn');
 
 const DEFAULT_SERVER_URL = window.location.origin;
 let apiBase = '';
@@ -602,7 +603,7 @@ if (airtestUploadBtn) {
       alert(err.message);
     } finally {
       airtestUploadBtn.disabled = false;
-      airtestUploadBtn.textContent = 'Upload Script';
+      airtestUploadBtn.textContent = 'Upload ZIP';
     }
   });
 }
@@ -783,6 +784,11 @@ function appendAirtestLog(text) {
   airtestLogsOutput.scrollTop = airtestLogsOutput.scrollHeight;
 }
 
+function clearAirtestLogs() {
+  if (!airtestLogsOutput) return;
+  airtestLogsOutput.textContent = '';
+}
+
 function resolveTaskDeviceId(msg) {
   if (msg.deviceId) {
     return msg.deviceId;
@@ -834,6 +840,7 @@ function handleAirtestTaskEvent(msg) {
 if (loginButton) loginButton.addEventListener('click', login);
 if (passwordInput) passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
 if (logoutButton) logoutButton.addEventListener('click', logout);
+if (airtestLogsClearBtn) airtestLogsClearBtn.addEventListener('click', clearAirtestLogs);
 
 document.addEventListener('DOMContentLoaded', () => {
   const loadingOverlay = document.getElementById('loadingOverlay');

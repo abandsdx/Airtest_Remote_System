@@ -39,6 +39,12 @@ class AirtestRunner:
         dest = self.workspace / safe_name
         dest.write_bytes(resp.content)
 
+        if safe_name.endswith(".air"):
+            raise ValueError(
+                "Downloaded .air is a file, but Airtest .air projects must be directories. "
+                "Use Upload Folder for the .air directory, or upload a .zip containing the .air directory."
+            )
+
         if safe_name.endswith(".zip"):
             extract_dir = self.workspace / safe_name[:-4]
             if extract_dir.exists():

@@ -496,11 +496,16 @@ app.post('/api/scripts/upload', authRequired, uploadScripts.single('file'), (req
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  const validExts = ['.air', '.zip'];
   const originalNameLower = req.file.originalname.toLowerCase();
-  if (!validExts.some(ext => originalNameLower.endsWith(ext))) {
+  if (originalNameLower.endsWith('.air')) {
     fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: 'Only .air or .zip files are accepted' });
+    return res.status(400).json({
+      error: 'A .air project is a directory. Use Upload Folder for .air projects, or upload a .zip that contains the .air directory.'
+    });
+  }
+  if (!originalNameLower.endsWith('.zip')) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Only .zip files are accepted. Use Upload Folder for .air project directories.' });
   }
 
   const script = {

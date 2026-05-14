@@ -2,7 +2,7 @@
 
 這個專案提供一套 Web Console + Node.js Server + Python Airtest Agent 的遠端 Airtest 執行系統。
 
-操作人員在 Web Console 上傳 `.air`、`.zip` 或整個資料夾，選擇已連線的 Agent 後執行任務。Server 透過 WebSocket 把任務派給 Agent，Agent 下載腳本、使用 ADB 連到 Android 裝置並執行 `airtest run`，再回傳即時 log、任務狀態與報告檔。
+操作人員在 Web Console 上傳 `.zip`，或直接上傳 Airtest `.air` 專案資料夾，選擇已連線的 Agent 後執行任務。Server 透過 WebSocket 把任務派給 Agent，Agent 下載腳本、使用 ADB 連到 Android 裝置並執行 `airtest run`，再回傳即時 log、任務狀態與報告檔。
 
 目前程式碼不包含 Android App、WebRTC 或 WebCodecs 串流功能；文件只保留部署方式與目前軟體功能說明。
 
@@ -93,7 +93,7 @@ python -m airtest_agent.main
 1. 部署 Server，登入 `http://<server-ip>:13000`。
 2. 在要執行測試的機器上啟動 Airtest Agent。
 3. 確認 Agent 出現在 Device Wall，且 Android 裝置可由 `adb devices` 看到。
-4. 在 Airtest 區塊上傳 `.air`、`.zip` 或資料夾。
+4. 在 Airtest 區塊上傳 `.zip`，或用 Upload Folder 選擇 `.air` 專案資料夾。
 5. 到 Uploaded Scripts 清單確認檔名、上傳時間、上傳者、類型、大小與檔案數。
 6. 選擇腳本與目標 Agent。
 7. 可選：輸入 JSON 變數，例如 `{"ENV":"qa","ROBOT_ID":"robot-01"}`。

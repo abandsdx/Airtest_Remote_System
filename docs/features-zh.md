@@ -14,7 +14,7 @@
 - 顯示目前登入者與角色。
 - Device Wall 顯示已連線 Airtest Agent。
 - 選擇單一 Agent 作為 Run Task 的目標。
-- 上傳 `.air`、`.zip` 或整個資料夾。
+- 上傳 `.zip`，或直接上傳 Airtest `.air` 專案資料夾。
 - 管理 Uploaded Scripts：查看檔名、上傳時間、上傳者、類型、大小、資料夾檔案數、檔案是否仍存在。
 - 對已上傳腳本執行 Select、Download、Delete。
 - 在 Airtest 區塊輸入 JSON 變數。
@@ -35,7 +35,7 @@ Server 是 Express + WebSocket 服務，負責：
 - 管理使用者。
 - 管理裝置/Agent 狀態。
 - 儲存上傳腳本 metadata。
-- 接收 `.air` / `.zip` 上傳。
+- 接收 `.zip` 上傳。
 - 接收資料夾上傳，並在 Server 端壓縮成 ZIP。
 - 提供腳本下載 API 給 Agent。
 - 透過 `/ws/operator` 接收 Web Console 指令。
@@ -80,7 +80,7 @@ Agent 是 Python 程式，負責：
 | `GET /api/devices` | 取得 Agent 清單 |
 | `GET /api/audits` | 取得 audit log |
 | `GET /api/scripts` | 取得 Uploaded Scripts 清單 |
-| `POST /api/scripts/upload` | 上傳單一 `.air` 或 `.zip` |
+| `POST /api/scripts/upload` | 上傳單一 `.zip` |
 | `POST /api/scripts/upload-directory` | 上傳資料夾，Server 壓縮成 ZIP |
 | `GET /api/scripts/:id` | 下載已上傳腳本，Web Console 與 Agent 共用 |
 | `DELETE /api/scripts/:id` | 刪除已上傳腳本 metadata 與實體檔 |
@@ -97,29 +97,30 @@ WebSocket：
 
 Airtest 區塊提供兩種上傳方式。
 
-### Upload Script
+### Upload ZIP
 
 用於上傳單一檔案。
 
 支援格式：
 
-- `.air`
 - `.zip`
 
 限制：
 
-- 其他副檔名會被 Server 拒絕。
+- 單一 `.air` 檔案會被 Server 拒絕，因為 Airtest 的 `.air` 專案是資料夾，不是檔案。
+- 其他非 `.zip` 副檔名會被 Server 拒絕。
 - 上傳後 Server 會記錄 `filename`、`stored_name`、`size`、`uploadedBy`、`createdAt`、`updatedAt`。
 - 單一檔案上傳的 `uploadType` 會是 `file`。
 
 適用情境：
 
-- 你已經有一個完整 `.air` 專案。
-- 你已經手動把 `.air` 專案與依賴資源包成 `.zip`。
+- 你已經手動把 `.air` 專案資料夾與依賴資源包成 `.zip`。
 
 ### Upload Folder
 
 用於直接選取本機資料夾。
+
+這是上傳 Airtest `.air` 專案的建議方式。`.air` 在 Airtest 裡是資料夾，例如 `login_test.air/`，不是單一檔案。
 
 前端會使用瀏覽器的資料夾選擇能力讀取資料夾內所有檔案與相對路徑，送到 Server。Server 收到後會：
 
@@ -157,6 +158,14 @@ suite/
 ```
 
 Agent 下載 ZIP 後會解壓縮，並尋找第一個 `.air` 目錄來執行。如果 ZIP 裡沒有 `.air` 目錄，Agent 會把解壓縮根目錄交給 `airtest run`，這通常不是建議用法。
+
+錯誤範例：
+
+```text
+script.air
+```
+
+如果 `script.air` 是單一檔案，Airtest 會嘗試讀取 `script.air/script.py`，最後出現 `NotADirectoryError`。正確做法是上傳整個 `script.air/` 資料夾，或 ZIP 裡面要包含 `script.air/` 資料夾。
 
 ## Uploaded Scripts 管理
 

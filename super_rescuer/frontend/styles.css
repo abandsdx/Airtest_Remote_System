@@ -221,6 +221,25 @@ button.ghost:hover {
   margin-bottom: 16px;
 }
 
+.card-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card-titlebar h2 {
+  margin-bottom: 0;
+}
+
+button.compact {
+  margin-top: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 /* 設備網格 */
 .grid {
   display: grid;

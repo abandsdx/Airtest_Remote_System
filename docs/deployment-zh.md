@@ -279,7 +279,7 @@ Android://127.0.0.1:5037/<serial>
 2. 登入 Web Console。
 3. 啟動一台或多台 Airtest Agent。
 4. 確認 Agent 出現在 Device Wall。
-5. 上傳 `.air`、`.zip` 或資料夾。
+5. 上傳 `.zip`，或用 Upload Folder 選擇 `.air` 專案資料夾。
 6. 在 Uploaded Scripts 確認上傳時間、上傳者、類型與檔案數。
 7. Select 腳本。
 8. 選擇 Agent。
@@ -293,7 +293,7 @@ Android://127.0.0.1:5037/<serial>
 需要備份：
 
 - `SUPER_RESCUER_DATA_DIR`：包含 `store.json`。
-- `SUPER_RESCUER_SCRIPTS_DIR`：包含 Uploaded Scripts 的 `.air`、`.zip` 與資料夾上傳後產生的 ZIP。
+- `SUPER_RESCUER_SCRIPTS_DIR`：包含 Uploaded Scripts 的 `.zip` 與資料夾上傳後產生的 ZIP。
 - Agent 端 `AGENT_DATA`：包含下載腳本、執行 log 與 report zip。
 
 建議正式環境：
@@ -323,6 +323,8 @@ Android://127.0.0.1:5037/<serial>
 ### 上傳資料夾後 Agent 執行哪個 `.air`
 
 Server 會把資料夾壓成 ZIP。Agent 下載後解壓縮，尋找第一個 `.air` 目錄並執行。建議一個上傳資料夾內只放一個主要 `.air` 專案，避免選到非預期目錄。
+
+注意：Airtest 的 `.air` 是資料夾，不是單一檔案。請不要用 Upload ZIP 上傳一個叫 `script.air` 的單一檔案；那會讓 Airtest 嘗試讀取 `script.air/script.py` 並失敗。正確做法是用 Upload Folder 選 `script.air/` 資料夾，或上傳包含 `script.air/` 資料夾的 ZIP。
 
 ### 有 Pause 嗎
 
