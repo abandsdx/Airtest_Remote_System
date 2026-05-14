@@ -326,6 +326,18 @@ Server 會把資料夾壓成 ZIP。Agent 下載後解壓縮，尋找第一個 `.
 
 注意：Airtest 的 `.air` 是資料夾，不是單一檔案。請不要用 Upload ZIP 上傳一個叫 `script.air` 的單一檔案；那會讓 Airtest 嘗試讀取 `script.air/script.py` 並失敗。正確做法是用 Upload Folder 選 `script.air/` 資料夾，或上傳包含 `script.air/` 資料夾的 ZIP。
 
+如果腳本需要 `nuwa_commons.py`、`common/` 這類共用 Python 模組，必須一起上傳。Agent 會把 `.air` 目錄與解壓後上一層目錄加入 `PYTHONPATH`，但不會自動從 Agent 主機其他目錄尋找專案外的模組。
+
+如果你的原始目錄是 `Merge/`，裡面同時有很多 `.air` 專案和 `nuwa_commons/`，不要直接上傳整個 `Merge/`。請建立只包含目標專案與共用模組的資料夾，例如：
+
+```text
+Superdeliver_package/
+|-- Superdeliver.air/
+`-- nuwa_commons/
+```
+
+再用 Upload Folder 上傳 `Superdeliver_package/`。這樣 Agent 只會找到一個 `.air` 專案，且 `nuwa_commons` 會在 `PYTHONPATH` 搜尋範圍內。
+
 ### 有 Pause 嗎
 
 目前沒有 Pause。現在支援的是 Stop Task，會停止目前 Airtest subprocess。

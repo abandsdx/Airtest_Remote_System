@@ -159,6 +159,49 @@ suite/
 
 Agent 下載 ZIP 後會解壓縮，並尋找第一個 `.air` 目錄來執行。如果 ZIP 裡沒有 `.air` 目錄，Agent 會把解壓縮根目錄交給 `airtest run`，這通常不是建議用法。
 
+如果 Airtest 腳本有共用 Python 模組，例如：
+
+```python
+from nuwa_commons import helper
+```
+
+請把 `nuwa_commons.py` 或 `nuwa_commons/` 一起放進上傳內容。Agent 執行時會把 `.air` 目錄與解壓後的上一層目錄加進 `PYTHONPATH`，所以以下兩種都可以被搜尋到：
+
+```text
+Superdeliver.air/
+|-- Superdeliver.py
+`-- nuwa_commons.py
+```
+
+或：
+
+```text
+suite/
+|-- Superdeliver.air/
+|   `-- Superdeliver.py
+`-- nuwa_commons.py
+```
+
+如果原始工作目錄像這樣：
+
+```text
+Merge/
+|-- AB_Nav.air/
+|-- Contact.air/
+|-- Superdeliver.air/
+`-- nuwa_commons/
+```
+
+不要直接上傳整個 `Merge/`，因為裡面有多個 `.air` 專案，Agent 無法知道你要跑哪一個。建議另外建立一個只包含目標專案與共用模組的 package 資料夾：
+
+```text
+Superdeliver_package/
+|-- Superdeliver.air/
+`-- nuwa_commons/
+```
+
+然後用 Upload Folder 上傳 `Superdeliver_package/`。
+
 錯誤範例：
 
 ```text

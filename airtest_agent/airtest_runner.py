@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 import logging
+import os
 import subprocess
 import shutil
 import zipfile
@@ -25,6 +26,20 @@ def build_airtest_device_uri(device_serial: Optional[str]) -> Optional[str]:
     if "://" in serial:
         return serial
     return f"Android://127.0.0.1:5037/{serial}"
+
+
+def build_pythonpath(script_path: Path, existing: Optional[str] = None) -> str:
+    candidates = [script_path, script_path.parent]
+    seen = set()
+    paths = []
+    for candidate in candidates:
+        resolved = str(candidate.resolve())
+        if resolved not in seen:
+            seen.add(resolved)
+            paths.append(resolved)
+    if existing:
+        paths.append(existing)
+    return os.pathsep.join(paths)
 
 
 class AirtestRunner:
@@ -53,10 +68,23 @@ class AirtestRunner:
             with zipfile.ZipFile(dest, "r") as zip_ref:
                 self._extract_zip_safely(zip_ref, extract_dir)
 
-            # Find the .air directory inside the extracted contents
-            for path in extract_dir.rglob("*.air"):
-                if path.is_dir():
-                    return path
+            air_dirs = sorted(path for path in extract_dir.rglob("*.air") if path.is_dir())
+            if len(air_dirs) == 1:
+                return air_dirs[0]
+            if len(air_dirs) > 1:
+                zip_stem = Path(safe_name[:-4]).name
+                matching_dirs = [
+                    path for path in air_dirs
+                    if path.name == zip_stem or path.name == f"{zip_stem}.air"
+                ]
+                if len(matching_dirs) == 1:
+                    return matching_dirs[0]
+                names = ", ".join(str(path.relative_to(extract_dir)) for path in air_dirs[:10])
+                raise ValueError(
+                    "Multiple .air projects found in uploaded zip. "
+                    "Upload a package folder that contains only the target .air project and its shared dependencies. "
+                    f"Found: {names}"
+                )
             # Fallback if no .air directory is explicitly found
             return extract_dir
 
@@ -96,8 +124,6 @@ class AirtestRunner:
         variables: Optional[Dict[str, str]] = None,
         log_callback: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> Dict[str, str]:
-        import os
-
         log_dir = self.workspace / f"task_{task_id}"
         log_dir.mkdir(parents=True, exist_ok=True)
         output_file = log_dir / "stdout.log"
@@ -109,6 +135,7 @@ class AirtestRunner:
         logger.info("Running Airtest: %s", " ".join(cmd))
 
         env = os.environ.copy()
+        env["PYTHONPATH"] = build_pythonpath(script_path, env.get("PYTHONPATH"))
         if variables:
             for k, v in variables.items():
                 env[str(k)] = str(v)
