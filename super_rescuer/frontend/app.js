@@ -31,6 +31,13 @@ const airtestScriptList = document.getElementById('airtestScriptList');
 const airtestScriptCount = document.getElementById('airtestScriptCount');
 const airtestLogsOutput = document.getElementById('airtestLogsOutput');
 const airtestLogsClearBtn = document.getElementById('airtestLogsClearBtn');
+const stdinInputArea = document.getElementById('stdinInputArea');
+const stdinPromptLabel = document.getElementById('stdinPromptLabel');
+const stdinInputField = document.getElementById('stdinInputField');
+const stdinSendBtn = document.getElementById('stdinSendBtn');
+
+let _pendingStdinDeviceId = null;
+let _pendingStdinTaskId = null;
 
 const DEFAULT_SERVER_URL = window.location.origin;
 let apiBase = '';
@@ -429,7 +436,13 @@ function handleTextMessage(data) {
     return;
   }
 
+  if (message.type === 'input_prompt') {
+    handleInputPrompt(message);
+    return;
+  }
+
   if (message.type === 'task_result') {
+    hideStdinInput();
     handleAirtestTaskResult(message);
     return;
   }
@@ -838,7 +851,41 @@ function handleAirtestTaskEvent(msg) {
   }
 }
 
-// ======== Event Listeners & Init ========
+// ======== stdin 互動 ========
+function handleInputPrompt(msg) {
+  const prompt = msg.prompt || '';
+  _pendingStdinDeviceId = msg.deviceId || null;
+  _pendingStdinTaskId = msg.task_id || null;
+
+  stdinPromptLabel.textContent = prompt ? `${prompt} ` : '請輸入: ';
+  stdinInputField.value = '';
+  if (stdinInputArea) stdinInputArea.classList.remove('hidden');
+  stdinInputField.focus();
+  appendAirtestLog(`\n[System][等待輸入] ${prompt}\n`);
+}
+
+function hideStdinInput() {
+  if (stdinInputArea) stdinInputArea.classList.add('hidden');
+  _pendingStdinDeviceId = null;
+  _pendingStdinTaskId = null;
+}
+
+function sendStdinInput() {
+  const value = stdinInputField.value;
+  if (!_pendingStdinDeviceId || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    type: 'stdin_input',
+    deviceId: _pendingStdinDeviceId,
+    task_id: _pendingStdinTaskId,
+    input: value,
+  }));
+  appendAirtestLog(`[${_pendingStdinDeviceId}] > ${value}\n`);
+  hideStdinInput();
+}
+
+if (stdinSendBtn) stdinSendBtn.addEventListener('click', sendStdinInput);
+if (stdinInputField) stdinInputField.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendStdinInput(); });
+
 if (loginButton) loginButton.addEventListener('click', login);
 if (passwordInput) passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
 if (logoutButton) logoutButton.addEventListener('click', logout);

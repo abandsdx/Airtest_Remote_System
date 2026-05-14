@@ -40,6 +40,7 @@ class AgentClient:
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._current_task: Optional[asyncio.Task] = None
         self._current_task_id: Optional[str] = None
+        self._stdin_queue: asyncio.Queue = asyncio.Queue()
 
     def _device_headers(self) -> Dict[str, str]:
         return {"X-Device-Key": self.config.device_shared_key}
@@ -111,7 +112,12 @@ class AgentClient:
                 script_name,
                 self._device_headers(),
             )
-            result = await self.airtest_runner.run(script_path, self.device_serial, task_id, variables=variables, log_callback=self._send_log)
+            result = await self.airtest_runner.run(
+                script_path, self.device_serial, task_id,
+                variables=variables,
+                log_callback=self._send_log,
+                stdin_callback=self._make_stdin_callback(task_id),
+            )
             status = result["status"]
             message_text = result.get("stdout_tail", "")
             await self.send(
@@ -148,6 +154,21 @@ class AgentClient:
             if self._current_task_id == task_id:
                 self._current_task_id = None
                 self._current_task = None
+
+    def _make_stdin_callback(self, task_id: str):
+        """建立一個 async callback，送出 input_prompt 後等待前端回覆"""
+        async def _cb(prompt: str) -> str:
+            await self.send({
+                "type": "input_prompt",
+                "task_id": task_id,
+                "prompt": prompt,
+            })
+            # 清空舊的未處理回覆
+            while not self._stdin_queue.empty():
+                self._stdin_queue.get_nowait()
+            user_input = await self._stdin_queue.get()
+            return user_input
+        return _cb
 
     async def handle_stop_task(self, message: Dict[str, Any]) -> None:
         task_id = message.get("task_id")
@@ -207,6 +228,8 @@ class AgentClient:
             await self.handle_stop_task(message)
         elif msg_type == "control":
             await self.handle_control(message)
+        elif msg_type == "stdin_input":
+            await self._stdin_queue.put(message.get("input", ""))
         else:
             logger.debug("Unhandled message: %s", message)
 

@@ -1098,7 +1098,7 @@ wssDevice.on('connection', (ws, req) => {
         return;
       }
 
-      if (['log', 'task_result', 'task_event'].includes(msg.type) && deviceId) {
+      if (['log', 'task_result', 'task_event', 'input_prompt'].includes(msg.type) && deviceId) {
         broadcastToOperators({ ...msg, deviceId });
         return;
       }
@@ -1205,7 +1205,7 @@ wssOperator.on('connection', (ws, req) => {
       return;
     }
 
-    if (['control', 'service', 'run_task', 'stop_task'].includes(msg.type)) {
+    if (['control', 'service', 'run_task', 'stop_task', 'stdin_input'].includes(msg.type)) {
       const outbound = msg.type === 'run_task' ? enrichRunTaskMessage(msg) : msg;
       sendToDevice(msg.deviceId, JSON.stringify(outbound));
     }

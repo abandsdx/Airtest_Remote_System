@@ -133,6 +133,7 @@ class AirtestRunner:
         task_id: str,
         variables: Optional[Dict[str, str]] = None,
         log_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        stdin_callback: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> Dict[str, str]:
         log_dir = self.workspace / f"task_{task_id}"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -154,28 +155,75 @@ class AirtestRunner:
             for k, v in variables.items():
                 env[str(k)] = str(v)
 
+        # 每次無輸出超過此秒數，判定腳本正在等待 input()
+        INPUT_IDLE_TIMEOUT = 3.0
+
         proc = None
         stopped = False
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 env=env,
             )
 
             with output_file.open("w", encoding="utf-8") as f_out:
+                line_buf = ""  # 累積未換行的輸出（可能是 input prompt）
                 while True:
                     assert proc.stdout is not None
-                    line = await proc.stdout.readline()
-                    if not line:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            proc.stdout.read(4096), timeout=INPUT_IDLE_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        if proc.returncode is not None:
+                            break
+                        # 有未完成的 prompt 行 → 腳本在等 input()
+                        if stdin_callback is not None and line_buf.strip():
+                            prompt_text = line_buf.rstrip()
+                            # 把 prompt 送到前端顯示
+                            if log_callback is not None:
+                                asyncio.create_task(log_callback(prompt_text))
+                            try:
+                                user_input = await stdin_callback(prompt_text)
+                            except asyncio.CancelledError:
+                                raise
+                            # 記錄到 log
+                            entry = f"{prompt_text}: {user_input}\n"
+                            f_out.write(entry)
+                            f_out.flush()
+                            log_tail.append(entry.rstrip())
+                            if log_callback is not None:
+                                asyncio.create_task(log_callback(f"> {user_input}"))
+                            line_buf = ""
+                            if proc.stdin and not proc.stdin.is_closing():
+                                proc.stdin.write((user_input + "\n").encode("utf-8"))
+                                await proc.stdin.drain()
+                        continue
+
+                    if not chunk:
+                        # 程序結束，flush 剩餘 buffer
+                        if line_buf:
+                            f_out.write(line_buf)
+                            f_out.flush()
+                            log_tail.append(line_buf.rstrip())
+                            if log_callback is not None:
+                                asyncio.create_task(log_callback(line_buf.strip()))
                         break
-                    line_str = line.decode("utf-8", errors="replace")
-                    f_out.write(line_str)
-                    f_out.flush()
-                    log_tail.append(line_str.rstrip())
-                    if log_callback is not None:
-                        asyncio.create_task(log_callback(line_str.strip()))
+
+                    text = chunk.decode("utf-8", errors="replace")
+                    line_buf += text
+                    # 處理所有完整行（以 \n 結尾的）
+                    while "\n" in line_buf:
+                        line_str, line_buf = line_buf.split("\n", 1)
+                        line_str += "\n"
+                        f_out.write(line_str)
+                        f_out.flush()
+                        log_tail.append(line_str.rstrip())
+                        if log_callback is not None:
+                            asyncio.create_task(log_callback(line_str.strip()))
 
             await proc.wait()
         except asyncio.CancelledError:

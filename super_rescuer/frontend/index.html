@@ -133,6 +133,12 @@
           <div id="airtestLogsOutput" class="terminal-output"
             style="height: 200px; background-color: #0d1117; color: #c9d1d9; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 13px;">
           </div>
+          <!-- stdin 互動輸入區（腳本呼叫 input() 時顯示）-->
+          <div id="stdinInputArea" class="terminal-input-area hidden" style="margin-top: 8px; gap: 6px;">
+            <span id="stdinPromptLabel" style="font-family: monospace; font-size: 13px; color: #f0c040; white-space: pre;"></span>
+            <input id="stdinInputField" type="text" placeholder="輸入後按 Enter 或點擊送出" style="flex:1; font-family: monospace;"/>
+            <button id="stdinSendBtn" type="button">送出</button>
+          </div>
         </div>
 
       </section>
