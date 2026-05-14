@@ -20,6 +20,8 @@ const wsStatusEl = document.getElementById('wsStatus');
 // ======== Airtest Elements ========
 const airtestUploadInput = document.getElementById('airtestUploadInput');
 const airtestUploadBtn = document.getElementById('airtestUploadBtn');
+const airtestDirectoryInput = document.getElementById('airtestDirectoryInput');
+const airtestDirectoryBtn = document.getElementById('airtestDirectoryBtn');
 const airtestScriptSelect = document.getElementById('airtestScriptSelect');
 const airtestRefreshBtn = document.getElementById('airtestRefreshBtn');
 const airtestVarsInput = document.getElementById('airtestVarsInput');
@@ -121,6 +123,24 @@ function formatBytes(value) {
     unitIndex += 1;
   }
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function getUploadRelativePath(file) {
+  return file.webkitRelativePath || file.name;
+}
+
+function getDirectoryRootName(files) {
+  const firstRelativePath = files[0] ? getUploadRelativePath(files[0]) : '';
+  return firstRelativePath.split('/').filter(Boolean)[0] || 'airtest-directory';
+}
+
+async function getResponseErrorMessage(response, fallback) {
+  try {
+    const data = await response.json();
+    return data.message || data.error || fallback;
+  } catch (err) {
+    return fallback;
+  }
 }
 
 function setAdminNavigationVisibility() {
@@ -445,7 +465,7 @@ async function fetchAirtestScripts() {
 function renderAirtestScriptList() {
   if (!airtestScriptList) return;
   if (airtestScriptCount) {
-    airtestScriptCount.textContent = `${airtestScripts.length} file${airtestScripts.length === 1 ? '' : 's'}`;
+    airtestScriptCount.textContent = `${airtestScripts.length} item${airtestScripts.length === 1 ? '' : 's'}`;
   }
 
   if (!airtestScripts.length) {
@@ -468,12 +488,23 @@ function renderAirtestScriptList() {
     const size = escapeHtml(formatBytes(script.size));
     const missingClass = script.fileExists === false ? ' text-danger' : '';
     const missingText = script.fileExists === false ? 'Missing file' : size;
+    const isDirectoryUpload = script.uploadType === 'directory';
+    const uploadType = isDirectoryUpload ? 'Directory ZIP' : 'File';
+    const fileCount = isDirectoryUpload && typeof script.fileCount === 'number'
+      ? `${script.fileCount} file${script.fileCount === 1 ? '' : 's'}`
+      : '';
+    const sourceName = isDirectoryUpload && script.originalDirectoryName
+      ? `Source ${escapeHtml(script.originalDirectoryName)}`
+      : '';
 
     item.innerHTML = `
       <div class="script-main">
         <div class="script-name" title="${safeFilename}">${safeFilename}</div>
         <div class="script-meta">
           Uploaded ${uploadedAt}${uploadedBy}
+          <span>${escapeHtml(uploadType)}</span>
+          ${fileCount ? `<span>${escapeHtml(fileCount)}</span>` : ''}
+          ${sourceName ? `<span>${sourceName}</span>` : ''}
           <span class="${missingClass}">${escapeHtml(missingText)}</span>
           ${updatedAt ? `<span>${updatedAt}</span>` : ''}
         </div>
@@ -562,7 +593,7 @@ if (airtestUploadBtn) {
       });
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        throw new Error(await getResponseErrorMessage(response, `Upload failed: ${response.status}`));
       }
 
       airtestUploadInput.value = '';
@@ -572,6 +603,50 @@ if (airtestUploadBtn) {
     } finally {
       airtestUploadBtn.disabled = false;
       airtestUploadBtn.textContent = 'Upload Script';
+    }
+  });
+}
+
+if (airtestDirectoryBtn && airtestDirectoryInput) {
+  airtestDirectoryBtn.addEventListener('click', () => {
+    airtestDirectoryInput.click();
+  });
+
+  airtestDirectoryInput.addEventListener('change', async () => {
+    const files = Array.from(airtestDirectoryInput.files || []);
+    if (!files.length) return;
+
+    const relativePaths = files.map(getUploadRelativePath);
+    const formData = new FormData();
+    formData.append('rootName', getDirectoryRootName(files));
+    formData.append('relativePathsJson', JSON.stringify(relativePaths));
+    files.forEach((file) => {
+      formData.append('files', file, file.name);
+    });
+
+    airtestDirectoryBtn.disabled = true;
+    airtestDirectoryBtn.textContent = 'Uploading...';
+
+    try {
+      const response = await fetch(`${apiBase}/api/scripts/upload-directory`, {
+        method: 'POST',
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response, `Folder upload failed: ${response.status}`));
+      }
+
+      await fetchAirtestScripts();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      airtestDirectoryInput.value = '';
+      airtestDirectoryBtn.disabled = false;
+      airtestDirectoryBtn.textContent = 'Upload Folder';
     }
   });
 }

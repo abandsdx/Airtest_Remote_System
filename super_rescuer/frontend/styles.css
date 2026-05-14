@@ -138,6 +138,24 @@ button.ghost:hover {
   color: white;
 }
 
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.controls input[type="file"],
+.controls select {
+  flex: 1 1 220px;
+  margin-top: 0;
+}
+
+.controls button {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
 /* 頂部導航欄 */
 .topbar {
   display: flex;

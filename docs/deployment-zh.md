@@ -1,19 +1,26 @@
 # 部署說明
 
-本文件依照目前程式碼整理部署方式，包含 Web Console/Server 與 Airtest Agent。舊版 Android 串流 App、WebRTC、WebCodecs 與檔案總管相關部署已不在目前程式碼中。
+這份文件說明目前程式碼的部署方式。系統分成兩部分：
+
+- Web Console / Server：Node.js + Express + WebSocket，建議用 Docker 部署。
+- Airtest Agent：Python 程式，部署在能連到 Android 裝置與 ADB 的機器上。
+
+目前專案不包含 Android App、WebRTC 或 WebCodecs 串流部署。
 
 ## 1. Web Console / Server
 
-Server 位於 `super_rescuer/server`，使用 Node.js、Express 與 `ws`，並直接託管 `super_rescuer/frontend` 靜態頁面。
+位置：`super_rescuer`
 
-### 伺服器需求
+Server container 內部使用 port `3000`，Docker Compose 預設映射到主機 port `13000`。
 
-- Linux 主機
-- Docker Engine
-- Docker Compose plugin
-- 對操作者與 Agent 開放 TCP `13000`，或你指定的 `RIDER_HOST_PORT`
+### 系統需求
 
-### 一鍵部署
+- Linux 主機。
+- Docker Engine。
+- Docker Compose plugin，也就是可執行 `docker compose version`。
+- Agent 機器可以連到 Server 的主機 port，預設是 `13000`。
+
+### 建議部署方式
 
 ```bash
 cd super_rescuer
@@ -32,50 +39,71 @@ http://<server-ip>:13000
 curl http://127.0.0.1:13000/api/health
 ```
 
-正確回應：
+預期回應：
 
 ```json
 {"status":"ok"}
 ```
 
-預設帳號：
+預設登入帳號：
 
 ```text
 admin / admin123
 ```
 
-第一次登入後請建立新管理員或修改預設密碼。
+第一次上線後請到 User Management 建立正式帳號，並修改或移除預設帳號。
 
-### 常用部署參數
+## 2. deploy-web.sh 和 docker compose 的差異
 
-可以直接用環境變數覆蓋：
+兩者最後都會使用 Docker Compose 啟動 `server`，但用途不同。
 
-```bash
-RIDER_HOST_PORT=13001 DEVICE_SHARED_KEY=change-me bash deploy-web.sh
-```
+### `bash deploy-web.sh`
 
-也可以建立 `super_rescuer/.env`：
+這是建議給部署人員使用的包裝腳本。
 
-```bash
-cd super_rescuer
-cp .env.example .env
-nano .env
-bash deploy-web.sh
-```
+它會做這些事：
 
-主要參數：
+- 自動切到 `super_rescuer` 目錄。
+- 如果存在 `.env`，會先載入 `.env`。
+- 設定預設值：
+  - `RIDER_HOST_PORT=13000`
+  - `RIDER_BIND_ADDR=0.0.0.0`
+  - `DEVICE_SHARED_KEY=nuwa8888`
+  - `WS_FRAME_DEBUG=1`
+  - `SUPER_RESCUER_DATA_DIR=/opt/super-rescuer/data`
+  - `SUPER_RESCUER_RECORDINGS_DIR=/opt/super-rescuer/recordings`
+  - `SUPER_RESCUER_SCRIPTS_DIR=/opt/super-rescuer/scripts`
+- 檢查 Docker 是否存在。
+- 檢查 Docker Compose plugin 是否存在。
+- 執行 `docker compose up -d --build server`。
+- 等待 `/api/health` 健康檢查。
+- 印出 Web Console URL、health check URL、預設帳號與 shared key。
 
-| 參數 | 預設值 | 說明 |
-| --- | --- | --- |
-| `RIDER_HOST_PORT` | `13000` | 主機對外服務 port |
-| `RIDER_BIND_ADDR` | `0.0.0.0` | 綁定位址；若放在反向代理後可用 `127.0.0.1` |
-| `DEVICE_SHARED_KEY` | `nuwa8888` | Agent 連線與下載腳本使用的 shared key |
-| `SUPER_RESCUER_DATA_DIR` | `/opt/super-rescuer/data` | `store.json` 持久化目錄 |
-| `SUPER_RESCUER_RECORDINGS_DIR` | `/opt/super-rescuer/recordings` | recordings 掛載目錄，目前程式碼未提供錄影查詢 API |
-| `ALLOWED_ORIGINS` | `*` | CORS 允許來源 |
-| `WS_FRAME_DEBUG` | `1` | WebSocket frame debug log |
+適合：
 
-### Docker Compose 手動部署
+- 第一次部署。
+- 給不熟 Docker Compose 細節的人操作。
+- 希望部署後自動檢查服務是否起來。
+
+### `docker compose up -d --build`
+
+這是直接呼叫 Docker Compose。
+
+它只會依照 `docker-compose.yml` 與目前 shell 環境變數啟動服務，不會做額外檢查，也不會等待 health check。
+
+適合：
+
+- 熟悉 Docker Compose 的維運人員。
+- CI/CD。
+- 只想直接重建或重啟服務。
+
+注意：
+
+- 如果你沒有先設定環境變數，Compose 會使用 `docker-compose.yml` 裡的預設值。
+- 如果你希望使用 `.env`，請確認 `.env` 位於 `super_rescuer/.env`，並且你是在 `super_rescuer` 目錄執行。
+- `deploy-web.sh` 只啟動 `server` service；目前 compose 檔也只有這個 service。
+
+直接使用 Compose：
 
 ```bash
 cd super_rescuer
@@ -88,13 +116,52 @@ docker compose up -d --build
 docker compose logs -f server
 ```
 
-停止服務：
+停止：
 
 ```bash
 docker compose down
 ```
 
-### 本機開發啟動
+## 3. 環境變數
+
+可以用單次命令設定：
+
+```bash
+RIDER_HOST_PORT=13001 DEVICE_SHARED_KEY=change-me bash deploy-web.sh
+```
+
+也可以建立 `.env`：
+
+```bash
+cd super_rescuer
+cp .env.example .env
+nano .env
+bash deploy-web.sh
+```
+
+主要環境變數：
+
+| 變數 | 預設值 | 說明 |
+| --- | --- | --- |
+| `RIDER_HOST_PORT` | `13000` | 主機對外提供 Web Console / API / WebSocket 的 port |
+| `RIDER_BIND_ADDR` | `0.0.0.0` | 主機 bind 位址；若只給本機 reverse proxy 用，可設 `127.0.0.1` |
+| `DEVICE_SHARED_KEY` | `nuwa8888` | Server 和 Agent 共用驗證 key，Agent 必須一致 |
+| `SUPER_RESCUER_DATA_DIR` | `/opt/super-rescuer/data` | Server `store.json` 與持久化資料位置 |
+| `SUPER_RESCUER_RECORDINGS_DIR` | `/opt/super-rescuer/recordings` | recordings volume，目前保留給系統資料 |
+| `SUPER_RESCUER_SCRIPTS_DIR` | `/opt/super-rescuer/scripts` | Uploaded Scripts 實體檔案持久化位置 |
+| `ALLOWED_ORIGINS` | `*` | CORS 允許來源；正式環境建議指定網域 |
+| `WS_FRAME_DEBUG` | `1` | WebSocket frame debug log |
+
+上傳腳本目錄：
+
+- 程式支援 `SCRIPTS_DIR`。
+- Docker Compose 會把主機 `SUPER_RESCUER_SCRIPTS_DIR` 掛載到 container 的 `/usr/src/app/scripts`。
+- Compose 會設定 `SCRIPTS_DIR=/usr/src/app/scripts`。
+- 因此 Uploaded Scripts 的 metadata 和實體檔都會跨 container 重建保存。
+
+## 4. 本機開發啟動 Server
+
+不使用 Docker 時：
 
 ```bash
 cd super_rescuer/server
@@ -102,67 +169,42 @@ npm install
 npm start
 ```
 
-本機預設網址：
+本機預設：
 
 ```text
 http://localhost:3000
 ```
 
-注意：本機直接 `npm start` 時，server 程式碼的 `DEVICE_SHARED_KEY` 預設是 `rider-dev-key`；Docker Compose 預設是 `nuwa8888`。
+注意：
 
-### HTTPS / 反向代理
+- 本機 `npm start` 的 `DEVICE_SHARED_KEY` 預設是 `rider-dev-key`。
+- Docker 部署的 `DEVICE_SHARED_KEY` 預設是 `nuwa8888`。
+- 兩邊不同時，Agent 會連不上或驗證失敗。
+- 新增資料夾上傳功能後，Server 需要 `jszip` dependency；請重新執行 `npm install` 或重新 build Docker image。
 
-目前 UI 主要用 REST 與 WebSocket，不依賴 WebCodecs。不過若部署在公開網路，仍建議使用 HTTPS 並限制來源。
+## 5. Airtest Agent 部署
 
-若主機已有 Nginx、Caddy 或其他反向代理，可讓 Docker 只綁本機：
+位置：repo 根目錄的 `airtest_agent`
 
-```bash
-RIDER_BIND_ADDR=127.0.0.1 bash deploy-web.sh
-```
+### Agent 系統需求
 
-反向代理目標：
+- Python 3.10+。
+- 已安裝 Airtest CLI，且可執行 `airtest`。
+- 已安裝 ADB，且 `adb` 在 PATH，或透過環境設定指定。
+- Android 裝置已開啟 USB debugging。
+- Agent 機器可連到 Server，例如 `ws://<server-ip>:13000`。
 
-```text
-http://127.0.0.1:13000
-```
-
-如果使用 HTTPS 網域，Airtest Agent 的 `CLOUD_SERVER` 請使用 `wss://<domain>`。
-
-## 2. Airtest Agent
-
-Agent 位於 `airtest_agent`，會連到 Server 的 `/ws/device`，並以裝置身分出現在 Web Console 的 Device Wall。
-
-### Agent 主機需求
-
-- Python 3.10+ 或相容版本
-- ADB 已安裝且在 `PATH` 中，或設定 `ADB_BIN`
-- Android 裝置已開啟 USB debugging，且 `adb devices` 可看到 `device`
-- 可以連線到 Web Server 的 `13000` 或反向代理網址
-
-確認 ADB：
+檢查 ADB：
 
 ```bash
 adb devices
 ```
 
-### Linux / macOS
-
-從 repo 根目錄執行：
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r airtest_agent/requirements.txt
-
-CLOUD_SERVER=ws://<server-ip>:13000 \
-DEVICE_SHARED_KEY=nuwa8888 \
-AGENT_ID=agent-01 \
-python -m airtest_agent.main
-```
+應看到目標裝置狀態為 `device`。
 
 ### Windows PowerShell
 
-從 repo 根目錄執行：
+在 repo 根目錄執行：
 
 ```powershell
 py -3.11 -m venv .venv
@@ -175,37 +217,105 @@ $env:AGENT_ID = "agent-01"
 python -m airtest_agent.main
 ```
 
+### Linux / macOS
+
+在 repo 根目錄執行：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r airtest_agent/requirements.txt
+
+CLOUD_SERVER=ws://<server-ip>:13000 \
+DEVICE_SHARED_KEY=nuwa8888 \
+AGENT_ID=agent-01 \
+python -m airtest_agent.main
+```
+
+### `python -m airtest_agent.main` 執行哪個檔案
+
+這個命令會執行：
+
+```text
+airtest_agent/main.py
+```
+
+流程：
+
+1. Python 以 module 方式載入 `airtest_agent.main`。
+2. 執行 `airtest_agent/main.py` 最下方的 `asyncio.run(main())`。
+3. `main()` 讀取 `AgentConfig.from_env()`。
+4. 建立 `AgentClient`。
+5. 啟動 `DeviceDetector`。
+6. 呼叫 `agent.run()`，連到 Server `/ws/device`。
+
+使用 `-m` 的好處是 Python 會把 repo 根目錄視為 package 搜尋路徑，讓相對 import 正常運作。
+
 ### Agent 環境變數
 
-| 參數 | 預設值 | 說明 |
+| 變數 | 預設值 | 說明 |
 | --- | --- | --- |
-| `CLOUD_SERVER` | `ws://localhost:8081` | Server WebSocket base URL；部署時請明確設定 |
-| `DEVICE_SHARED_KEY` | `rider-dev-key` | 必須與 Server 相同 |
-| `AGENT_ID` | 隨機 8 碼 | Console 上顯示的裝置 ID |
-| `ADB_SERIAL` | 未設定 | 指定特定 ADB 裝置 |
-| `ADB_WIFI` | 未設定 | 無 USB 裝置時嘗試 `adb connect <host:port>` |
-| `ADB_BIN` | `adb` | ADB 執行檔路徑 |
-| `AGENT_DATA` | `/tmp/airtest_agent` | 腳本、log、report 工作目錄 |
+| `CLOUD_SERVER` | `ws://localhost:8081` | Server WebSocket base URL；Docker 部署通常是 `ws://<server-ip>:13000` |
+| `DEVICE_SHARED_KEY` | `rider-dev-key` | 必須和 Server 的 `DEVICE_SHARED_KEY` 一致 |
+| `AGENT_ID` | 隨機 8 碼 | 顯示在 Device Wall 的 Agent ID |
+| `ADB_SERIAL` | 空 | 指定 ADB 裝置 serial |
+| `AGENT_DATA` | `/tmp/airtest_agent` | Agent 工作目錄，保存下載腳本、log、report |
 
-## 3. 初次操作流程
+## 6. 上線後操作流程
 
-1. 部署 Web Console / Server。
-2. 登入 `http://<server-ip>:13000`。
-3. 啟動 Airtest Agent，並確認 Device Wall 出現該 Agent。
-4. 上傳 `.air` 或 `.zip` 腳本。
-5. 在 Uploaded Scripts 清單確認上傳時間、大小與檔案狀態；需要時可下載或刪除舊腳本。
-6. 選取 Agent 與腳本。
-7. 可選：輸入 JSON 變數，例如 `{"ENV":"qa","ROBOT_ID":"robot-01"}`。這些變數會以環境變數形式傳給該次 Airtest 執行程序；詳細格式、型別轉換與腳本讀取方式請看 [features-zh.md](features-zh.md#任務-json-變數用法)。
-8. 點擊 Run Task。
-9. 多台 Agent 可同時執行；Device Wall 會顯示各台的 Airtest 狀態。
-10. 任務執行中可對指定 Agent 點擊 Stop Task，中止該台目前 Airtest subprocess。
-11. 從 Airtest Logs 查看即時輸出與任務結果。
+1. 部署 Server。
+2. 登入 Web Console。
+3. 啟動一台或多台 Airtest Agent。
+4. 確認 Agent 出現在 Device Wall。
+5. 上傳 `.air`、`.zip` 或資料夾。
+6. 在 Uploaded Scripts 確認上傳時間、上傳者、類型與檔案數。
+7. Select 腳本。
+8. 選擇 Agent。
+9. 可選：輸入 JSON 變數，例如 `{"ENV":"qa","ROBOT_ID":"robot-01"}`。
+10. 點擊 Run Task。
+11. 若需要停止，選定正在執行的 Agent 後點 Stop Task，或使用 Device Wall 上該 Agent 的停止操作。
+12. 在 Airtest Logs 查看即時輸出與結果。
 
-## 4. 維運注意事項
+## 7. 資料與備份
 
-- `store.json` 儲存使用者、裝置、任務、audit 與腳本 metadata。
-- Session 存在記憶體，Server 重啟後需要重新登入。
-- 上傳腳本預設放在 Server 的 `scripts` 目錄；目前 Docker Compose 未掛載該目錄，重建容器前請備份或自行新增 volume。
-- `DEVICE_SHARED_KEY` 請在正式環境改掉，且 Server 與所有 Agent 必須一致。
-- 若 Agent 顯示離線，優先檢查 `CLOUD_SERVER`、防火牆、shared key 與 WebSocket 反向代理設定。
-- 若 Airtest 任務失敗，先在 Agent 主機確認 `adb devices` 與本機 `airtest run` 是否正常。
+需要備份：
+
+- `SUPER_RESCUER_DATA_DIR`：包含 `store.json`。
+- `SUPER_RESCUER_SCRIPTS_DIR`：包含 Uploaded Scripts 的 `.air`、`.zip` 與資料夾上傳後產生的 ZIP。
+- Agent 端 `AGENT_DATA`：包含下載腳本、執行 log 與 report zip。
+
+建議正式環境：
+
+- 設定固定的 `DEVICE_SHARED_KEY`。
+- 設定非預設 admin 帳號。
+- 限制 `ALLOWED_ORIGINS`。
+- 用 reverse proxy 提供 HTTPS。
+- 定期備份上傳腳本持久化 volume。
+- 定期備份 `store.json` 與上傳腳本。
+
+## 8. 常見問題
+
+### Agent 看不到 Server
+
+檢查：
+
+- `CLOUD_SERVER` 是否是 `ws://<server-ip>:13000`。
+- Server 防火牆是否開放 `RIDER_HOST_PORT`。
+- `DEVICE_SHARED_KEY` 是否一致。
+- Server log 是否有 WebSocket 驗證錯誤。
+
+### `docker compose up -d --build` 可以，為什麼還要 `deploy-web.sh`
+
+`deploy-web.sh` 是部署包裝腳本，會設定預設值、讀 `.env`、檢查 Docker/Compose、啟動服務並做 health check。直接 `docker compose up -d --build` 不會做這些檢查。
+
+### 上傳資料夾後 Agent 執行哪個 `.air`
+
+Server 會把資料夾壓成 ZIP。Agent 下載後解壓縮，尋找第一個 `.air` 目錄並執行。建議一個上傳資料夾內只放一個主要 `.air` 專案，避免選到非預期目錄。
+
+### 有 Pause 嗎
+
+目前沒有 Pause。現在支援的是 Stop Task，會停止目前 Airtest subprocess。
+
+### 多機台同時執行時 Stop 會不會停錯
+
+Stop 訊息包含 `deviceId` 與 `task_id`。Server 會轉發到指定 Agent，Agent 也會確認 task id。多台 Agent 同時執行時，停止其中一台不會影響其他 Agent。

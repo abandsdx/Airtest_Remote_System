@@ -16,7 +16,7 @@ COPY server ./
 COPY frontend ./frontend
 
 # Create data directories
-RUN mkdir -p /usr/src/app/data /usr/src/app/recordings
+RUN mkdir -p /usr/src/app/data /usr/src/app/recordings /usr/src/app/scripts
 
 EXPOSE 3000
 

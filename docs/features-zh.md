@@ -1,166 +1,262 @@
-# 軟體功能說明
+# 功能說明
 
-本文件只描述目前程式碼已存在的功能。
+這份文件以目前程式碼為準，說明 Web Console、Server、Airtest Agent、腳本管理、資料夾上傳、Stop Task 與 JSON 變數用法。
 
 ## 系統角色
 
 ### Web Console
 
-瀏覽器操作介面，位於 `super_rescuer/frontend`，由 Server 直接提供靜態檔案。
+位置：`super_rescuer/frontend`
 
-目前包含：
+主要功能：
 
-- 登入與登出。
-- 可透過 `Ctrl+Shift+U` 顯示 Server URL 設定。
-- Device Wall 顯示目前上線的 Agent，以及各 Agent 的 Airtest 任務狀態。
-- 選擇 Agent 後派發 Airtest 任務。
-- 多台 Agent 可同時執行任務；每台 Agent 各自追蹤 task id 與 Running/Stopping 狀態。
-- 任務執行中可對指定 Agent 送出 Stop Task，要求該 Agent 終止目前 Airtest subprocess。
-- 上傳 `.air` 或 `.zip` 腳本。
-- 管理已上傳腳本：查看檔名、上傳時間、檔案大小、上傳者、檔案是否仍存在，並可選取、下載或刪除。
-- 任務變數輸入，格式為 JSON。
-- Airtest Logs 即時顯示 Agent 回傳的 log 與任務結果。
-- Admin 使用者可進入 User Management。
-- Audit Log 頁面可查看近期 audit。
+- 使用帳號密碼登入。
+- 顯示目前登入者與角色。
+- Device Wall 顯示已連線 Airtest Agent。
+- 選擇單一 Agent 作為 Run Task 的目標。
+- 上傳 `.air`、`.zip` 或整個資料夾。
+- 管理 Uploaded Scripts：查看檔名、上傳時間、上傳者、類型、大小、資料夾檔案數、檔案是否仍存在。
+- 對已上傳腳本執行 Select、Download、Delete。
+- 在 Airtest 區塊輸入 JSON 變數。
+- 對選定 Agent 執行 Run Task。
+- 對選定 Agent 執行 Stop Task。
+- 顯示 Airtest 即時 log 與任務結果。
+- Admin 角色可進入 User Management。
+- Audit Log 可查看登入、上傳、刪除等操作紀錄。
 
 ### Server
 
-Server 位於 `super_rescuer/server`，負責 API、WebSocket relay、靜態前端與本機 JSON 儲存。
+位置：`super_rescuer/server`
 
-主要能力：
+Server 是 Express + WebSocket 服務，負責：
 
-- 建立預設管理員 `admin / admin123`。
-- 登入後回傳 bearer token。
-- 以記憶體 session 驗證使用者。
-- Admin 可建立、修改、刪除使用者。
-- 儲存與列出已連線裝置狀態。
-- 接收 `.air` / `.zip` 腳本上傳，記錄檔名、大小、上傳者與上傳時間。
-- 列出已上傳腳本的管理用 metadata，不回傳 Server 端實體檔案路徑。
-- 刪除已上傳腳本時，同時移除 metadata 與實體檔案。
-- 提供腳本下載給已登入使用者或帶有正確 `X-Device-Key` 的 Agent。
-- 透過 WebSocket 將 `run_task` 指令送到指定 Agent。
-- 透過 WebSocket 將 `stop_task` 指令送到指定 Agent；HTTP 任務結果也會帶回 `deviceId` 供多機台 UI 對應。
-- 接收 Agent 回傳的 log、task result 與 report upload 通知。
-- 儲存 audit log；目前程式碼主要記錄登入與使用者管理事件。
-
-主要 API：
-
-| API | 用途 |
-| --- | --- |
-| `GET /api/health` | 健康檢查 |
-| `POST /api/login` | 登入 |
-| `GET /api/me` | 取得目前使用者 |
-| `GET /api/users` | Admin 列出使用者 |
-| `POST /api/users` | Admin 建立使用者 |
-| `PATCH /api/users/:id` | Admin 修改密碼或角色 |
-| `DELETE /api/users/:id` | Admin 刪除使用者 |
-| `GET /api/devices` | 列出裝置/Agent |
-| `GET /api/audits` | 取得近期 audit |
-| `GET /api/scripts` | 列出已上傳腳本 |
-| `POST /api/scripts/upload` | 上傳 `.air` 或 `.zip` |
-| `GET /api/scripts/:id` | 下載腳本 |
-| `DELETE /api/scripts/:id` | 刪除腳本 metadata 與實體檔案 |
-| `POST /api/tasks/:id/result` | Agent 上傳任務結果 |
-
-主要 WebSocket：
-
-| 路徑 | 用途 |
-| --- | --- |
-| `/ws/operator` | Web Console 連線，需先送出 auth token |
-| `/ws/device` | Airtest Agent 連線，需使用 `DEVICE_SHARED_KEY` hello |
+- 提供 Web Console 靜態檔。
+- 管理登入 session。
+- 管理使用者。
+- 管理裝置/Agent 狀態。
+- 儲存上傳腳本 metadata。
+- 接收 `.air` / `.zip` 上傳。
+- 接收資料夾上傳，並在 Server 端壓縮成 ZIP。
+- 提供腳本下載 API 給 Agent。
+- 透過 `/ws/operator` 接收 Web Console 指令。
+- 透過 `/ws/device` 與 Airtest Agent 維持連線。
+- 將 `run_task`、`stop_task` 指令轉發到指定 Agent。
+- 接收 Agent 回傳的 log、task result 與 artifacts。
+- 寫入 audit log。
 
 ### Airtest Agent
 
-Agent 位於 `airtest_agent`，是 Python 執行端。
+位置：`airtest_agent`
 
-主要能力：
+Agent 是 Python 程式，負責：
 
 - 連線到 Server `/ws/device`。
 - 使用 `DEVICE_SHARED_KEY` 驗證。
-- 以 `AGENT_ID` 顯示在 Device Wall。
-- 定期回報狀態，讓 Console 判斷上線。
-- 使用 ADB 偵測 Android 裝置。
-- 接收 `run_task` 後下載指定腳本。
-- 接收 `stop_task` 後終止目前執行中的 Airtest subprocess。
-- 支援 `.zip` 解壓並尋找 `.air` 目錄。
-- 執行 `airtest run`。
-- 將 JSON 任務變數轉為環境變數傳給 Airtest 程序。
+- 使用 `AGENT_ID` 顯示在 Device Wall。
+- 偵測本機 Android 裝置。
+- 使用 ADB serial 執行 Airtest。
+- 接收 `run_task`。
+- 從 Server 下載腳本。
+- 如果下載的是 ZIP，安全解壓縮並尋找第一個 `.air` 目錄。
+- 執行 `airtest run <script> --log <log_dir>`。
+- 將 Web Console 輸入的 JSON 變數轉成 Airtest subprocess 的環境變數。
 - 即時回傳 stdout log。
-- 執行後產生 `airtest report` 與 zip 檔。
-- 上傳 stdout log 與 report zip 到 Server。
+- 產生 `airtest report`。
+- 將 stdout log 與 report zip 上傳到 Server。
+- 接收 `stop_task` 並停止目前 Airtest subprocess。
 
-## Airtest 任務流程
+## API 摘要
 
-1. 操作者在 Web Console 上傳 `.air` 或 `.zip`。
-2. Server 儲存檔案與 metadata。
-3. 操作者選取上線 Agent 與腳本。
-4. Web Console 透過 `/ws/operator` 發送 `run_task`。
-5. Server 將任務轉送到指定 Agent。
-6. Agent 下載腳本並透過 ADB 選取 Android 裝置。
-7. Agent 執行 `airtest run`。
-8. Agent 即時將 log 傳回 Console。
-9. 若操作者按 Stop Task，Agent 會中止目前 subprocess，回傳 `stopped`。
-10. Agent 產生 report zip 並呼叫 `/api/tasks/:id/result` 上傳結果。
-11. Console 顯示任務成功、失敗或停止。
+| API | 說明 |
+| --- | --- |
+| `GET /api/health` | 健康檢查 |
+| `POST /api/login` | 登入 |
+| `GET /api/me` | 目前登入者 |
+| `GET /api/users` | Admin 取得使用者 |
+| `POST /api/users` | Admin 建立使用者 |
+| `PATCH /api/users/:id` | Admin 更新使用者 |
+| `DELETE /api/users/:id` | Admin 刪除使用者 |
+| `GET /api/devices` | 取得 Agent 清單 |
+| `GET /api/audits` | 取得 audit log |
+| `GET /api/scripts` | 取得 Uploaded Scripts 清單 |
+| `POST /api/scripts/upload` | 上傳單一 `.air` 或 `.zip` |
+| `POST /api/scripts/upload-directory` | 上傳資料夾，Server 壓縮成 ZIP |
+| `GET /api/scripts/:id` | 下載已上傳腳本，Web Console 與 Agent 共用 |
+| `DELETE /api/scripts/:id` | 刪除已上傳腳本 metadata 與實體檔 |
+| `POST /api/tasks/:id/result` | Agent 上傳任務結果 |
 
-## 上傳腳本管理
+WebSocket：
 
-Web Console 的 Airtest 區塊會顯示 Uploaded Scripts 清單。每筆資料來自 `GET /api/scripts`。
+| Path | 說明 |
+| --- | --- |
+| `/ws/operator` | Web Console 使用，需要登入 token |
+| `/ws/device` | Airtest Agent 使用，需要 `DEVICE_SHARED_KEY` |
 
-清單欄位：
+## 上傳腳本
+
+Airtest 區塊提供兩種上傳方式。
+
+### Upload Script
+
+用於上傳單一檔案。
+
+支援格式：
+
+- `.air`
+- `.zip`
+
+限制：
+
+- 其他副檔名會被 Server 拒絕。
+- 上傳後 Server 會記錄 `filename`、`stored_name`、`size`、`uploadedBy`、`createdAt`、`updatedAt`。
+- 單一檔案上傳的 `uploadType` 會是 `file`。
+
+適用情境：
+
+- 你已經有一個完整 `.air` 專案。
+- 你已經手動把 `.air` 專案與依賴資源包成 `.zip`。
+
+### Upload Folder
+
+用於直接選取本機資料夾。
+
+前端會使用瀏覽器的資料夾選擇能力讀取資料夾內所有檔案與相對路徑，送到 Server。Server 收到後會：
+
+1. 檢查每個檔案的相對路徑。
+2. 拒絕絕對路徑、磁碟機路徑、`..` 路徑與重複路徑。
+3. 保留資料夾相對結構。
+4. 壓縮成 ZIP。
+5. 把 ZIP 存入 Uploaded Scripts。
+6. 記錄 `uploadType: directory`、`originalDirectoryName`、`fileCount`、`originalSize`。
+
+瀏覽器限制：
+
+- 建議使用 Chrome 或 Edge。
+- 這個功能依賴 `webkitdirectory`；部分瀏覽器可能不支援資料夾選擇。
+
+建議資料夾結構：
+
+```text
+login_test.air/
+|-- login_test.py
+|-- account_input.png
+|-- password_input.png
+`-- tpl_xxx.png
+```
+
+也可以選擇上一層資料夾：
+
+```text
+suite/
+|-- login_test.air/
+|   |-- login_test.py
+|   `-- account_input.png
+`-- common/
+    `-- data.json
+```
+
+Agent 下載 ZIP 後會解壓縮，並尋找第一個 `.air` 目錄來執行。如果 ZIP 裡沒有 `.air` 目錄，Agent 會把解壓縮根目錄交給 `airtest run`，這通常不是建議用法。
+
+## Uploaded Scripts 管理
+
+Uploaded Scripts 清單會顯示：
 
 | 欄位 | 說明 |
 | --- | --- |
-| 檔名 | 上傳時的原始檔名 |
+| 檔名 | 使用者上傳時的檔名；資料夾上傳會顯示 `<資料夾名>.zip` |
 | Uploaded | 上傳時間，也就是 `createdAt` |
-| 上傳者 | 上傳該腳本的登入帳號；舊資料可能沒有此欄 |
-| 大小 | 上傳時記錄的檔案大小；舊資料會盡量從實體檔案補算 |
-| Missing file | metadata 存在，但 Server 找不到實體檔案 |
+| 上傳者 | 執行上傳的登入帳號 |
+| 類型 | `File` 或 `Directory ZIP` |
+| 檔案數 | 只有資料夾上傳會顯示 |
+| Source | 原始資料夾名稱 |
+| 大小 | Server 實際儲存檔案大小 |
+| Missing file | metadata 存在，但 Server 上實體檔已遺失 |
 
-可用操作：
+操作：
 
 | 操作 | 說明 |
 | --- | --- |
-| Select | 將該腳本帶入 Run Task 的下拉選單 |
-| Download | 透過 `GET /api/scripts/:id` 下載腳本；若實體檔案不存在則按鈕會停用 |
-| Delete | 呼叫 `DELETE /api/scripts/:id`，移除 metadata 與實體檔案 |
+| Select | 將該腳本帶入 Run Task 的選單 |
+| Download | 從 Server 下載原本儲存的檔案 |
+| Delete | 刪除 metadata 與 Server 上的實體檔 |
 
-刪除注意事項：
+注意事項：
 
-- 刪除後該腳本不能再被新的任務執行。
-- 如果某台 Agent 已經下載並正在執行該腳本，刪除 Server 上的檔案不會自動中止該次任務；要中止請使用 Stop Task。
-- 刪除會寫入 audit log，action 為 `script-delete`。
-- 上傳會寫入 audit log，action 為 `script-upload`。
-- 目前刪除權限與上傳權限相同，只要是已登入使用者即可操作。
+- Delete 不會停止正在執行的 Agent。已經下載到 Agent 工作目錄的任務會繼續執行。
+- 若要停止任務，請使用 Stop Task。
+- Delete 會寫入 audit log，action 是 `script-delete`。
+- 單一檔案上傳會寫入 `script-upload`。
+- 資料夾上傳會寫入 `script-upload-directory`。
 
-## 任務 JSON 變數用法
+## Run Task 流程
 
-Web Console 的 Airtest 區塊有一個變數輸入欄，placeholder 類似：
+1. Web Console 選擇腳本。
+2. Web Console 選擇 Agent。
+3. 使用者可輸入 JSON 變數。
+4. 點擊 Run Task。
+5. Web Console 透過 `/ws/operator` 送出 `run_task`。
+6. Server 檢查目標 `deviceId`，轉發到指定 Agent。
+7. Agent 從 Server 下載腳本。
+8. 如果是 ZIP，Agent 解壓縮並找 `.air` 目錄。
+9. Agent 執行 `airtest run`。
+10. Agent 即時回傳 log。
+11. Agent 產生 report zip。
+12. Agent 上傳任務結果。
+13. Web Console 清除該 Agent 的 running 狀態。
+
+每台 Agent 同一時間只接受一個任務。若同一台 Agent 已經在執行任務，再送新的任務，Agent 會回覆 failed，訊息會指出它正在執行哪個 task id。
+
+## Stop Task
+
+Stop Task 是目前已實作的中止機制。
+
+行為：
+
+- Web Console 會記錄每台 Agent 目前執行中的 `task_id`。
+- Airtest 區塊的 Stop Task 只針對目前選定的 Agent。
+- Device Wall 每張 Agent 卡片也會在該 Agent 執行中時顯示停止操作。
+- Stop 送出的訊息包含 `deviceId` 與 `task_id`。
+- Server 只會把 `stop_task` 轉發到指定 `deviceId` 的 Agent。
+- Agent 收到後會確認 `task_id` 是否是目前任務。
+- 若符合，Agent 取消目前 task，並 terminate Airtest subprocess。
+- 如果 subprocess 5 秒內沒有結束，Agent 會 kill subprocess。
+- 任務結果會回傳 `stopped`。
+
+多機台情境：
+
+- Agent A、Agent B 同時執行時，Stop Agent A 不會影響 Agent B。
+- UI 狀態是以 `deviceId` 分開記錄。
+- 每台 Agent 的 log 會用 `[deviceId]` 標示。
+- 若 Agent 離線，Web Console 會清除該 Agent 的 active task 狀態。
+
+限制：
+
+- Stop 是停止 Airtest subprocess，不會還原 Android 裝置狀態。
+- 如果 Airtest 腳本已經對外部系統送出操作，Stop 不會自動回滾那些操作。
+- 如果任務卡在無法被 subprocess terminate/kill 正常處理的外部程式，仍可能需要人工清理 Agent 機器上的程序。
+
+## JSON 變數用法
+
+Web Console 的 Airtest JSON 欄位可以輸入 JSON object，例如：
 
 ```json
-{"var": "val"}
+{"ENV":"qa","ROBOT_ID":"robot-01"}
 ```
 
-這個欄位用來為「單次任務」傳入參數。前端會把它放進 `run_task.vars`，Agent 收到後會在執行 `airtest run` 前，把每個 key/value 寫進該次 Airtest subprocess 的環境變數。
-
-資料流如下：
+資料流：
 
 ```text
 Web Console JSON input
-  -> run_task.vars
+  -> WebSocket run_task.vars
   -> Airtest Agent
   -> subprocess env
   -> airtest run <script>
-  -> Airtest Python script uses os.getenv(...)
+  -> Airtest 腳本用 os.getenv(...) 讀取
 ```
 
-這些變數只存在於該次 `airtest run` 程序，不會永久寫入 Agent 主機的系統環境變數，也不會自動儲存到 Server。
+### 正確格式
 
-### UI 輸入格式
-
-必須輸入合法 JSON object。可以空白；空白代表不傳任何變數。
-
-基本範例：
+必須是 JSON object：
 
 ```json
 {
@@ -173,19 +269,19 @@ Web Console JSON input
 }
 ```
 
-一行格式也可以：
+單行也可以：
 
 ```json
 {"ENV":"qa","ROBOT_ID":"robot-01","RETRY":3,"DEBUG":true}
 ```
 
-不合法範例：
+錯誤格式：
 
 ```json
 {ENV:"qa"}
 ```
 
-原因：JSON key 必須使用雙引號。
+原因：JSON key 必須用雙引號。
 
 ```json
 {
@@ -193,7 +289,7 @@ Web Console JSON input
 }
 ```
 
-原因：JSON 最後一個欄位後面不能有逗號。
+原因：JSON 最後一個欄位不能有尾逗號。
 
 ```text
 ENV=qa
@@ -203,12 +299,12 @@ ENV=qa
 
 ### 變數命名建議
 
-建議使用環境變數慣例：
+建議：
 
-- 使用大寫英文字母、數字、底線。
-- 例如 `ENV`、`ROBOT_ID`、`BASE_URL`、`RETRY`。
-- 不建議使用空白、減號、中文或特殊符號。
-- 不建議使用系統常見保留名稱，例如 `PATH`、`HOME`、`USER`、`TEMP`，避免覆蓋 subprocess 原本環境。
+- 使用英文大寫、數字、底線。
+- 例如 `ENV`、`ROBOT_ID`、`BASE_URL`、`ACCOUNT`、`PASSWORD`、`RETRY`。
+- 不要覆蓋系統常用環境變數，例如 `PATH`、`HOME`、`USER`、`TEMP`。
+- 敏感資料可以透過 JSON 傳入，但要注意 Airtest 腳本不要把密碼印到 log。
 
 建議：
 
@@ -224,14 +320,14 @@ ENV=qa
 ```json
 {
   "base-url": "https://qa.example.com",
-  "測試環境": "qa",
+  "中文變數": "qa",
   "PATH": "custom"
 }
 ```
 
-### Airtest 腳本讀取方式
+### 在 Airtest 腳本讀取
 
-在 `.air` 腳本的 Python 程式中使用 `os.getenv()` 讀取。
+`.air` 專案內的 Python 腳本可以用 `os.getenv()`：
 
 ```python
 # -*- encoding=utf8 -*-
@@ -249,13 +345,13 @@ print("ENV =", env)
 print("ROBOT_ID =", robot_id)
 ```
 
-`os.getenv("KEY", "default")` 的第二個參數是預設值。當 UI 沒有傳該變數時，腳本會使用預設值。
+`os.getenv("KEY", "default")` 的第二個參數是預設值。當 UI 沒有傳該變數時，Airtest 腳本會使用預設值。
 
-### 型別轉換
+### 數字與布林值
 
-Agent 會把 JSON 的 value 轉成字串後放進環境變數。因此 Airtest 腳本讀到的值都是 string。
+Agent 會把 JSON value 轉成字串放入環境變數，所以 Airtest 腳本要自行轉型。
 
-例如 UI 輸入：
+UI 輸入：
 
 ```json
 {
@@ -265,7 +361,7 @@ Agent 會把 JSON 的 value 轉成字串後放進環境變數。因此 Airtest �
 }
 ```
 
-Airtest 腳本中：
+Airtest 腳本：
 
 ```python
 import os
@@ -275,11 +371,9 @@ debug = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 timeout = float(os.getenv("TIMEOUT", "10"))
 ```
 
-注意布林值在 Python 中可能會變成 `"True"` / `"False"`，所以建議使用 `.lower()` 後再判斷。
+### 常見範例
 
-### 傳入測試環境
-
-UI：
+切換 QA / staging / production：
 
 ```json
 {
@@ -288,20 +382,15 @@ UI：
 }
 ```
 
-Airtest：
-
 ```python
 import os
 
 env = os.getenv("ENV", "dev")
 base_url = os.getenv("BASE_URL", "https://dev-api.example.com")
-
 print(f"Run on {env}: {base_url}")
 ```
 
-### 傳入帳號密碼
-
-UI：
+登入帳密：
 
 ```json
 {
@@ -309,8 +398,6 @@ UI：
   "PASSWORD": "qa_password"
 }
 ```
-
-Airtest：
 
 ```python
 import os
@@ -325,11 +412,7 @@ touch(Template("password_input.png"))
 text(password)
 ```
 
-注意：目前系統沒有加密儲存任務變數，也可能出現在瀏覽器、Server/Agent 記憶體或 log 中。正式密碼、token、API key 不建議直接放在 UI 變數欄，除非部署環境已受控且你接受這個風險。
-
-### 傳入不同機台參數
-
-多台 Agent 同時執行時，每次 Run Task 都可以輸入不同 JSON。變數只會傳給該次任務，不會影響其他機台。
+多機台使用不同參數：
 
 Agent A：
 
@@ -349,8 +432,6 @@ Agent B：
 }
 ```
 
-Airtest：
-
 ```python
 import os
 
@@ -358,148 +439,25 @@ robot_id = os.getenv("ROBOT_ID", "unknown")
 print("Current robot:", robot_id)
 ```
 
-### 傳入複雜設定
+## 資料保存
 
-環境變數本質上是字串。若要傳入多層設定，不建議直接放 JSON object：
+Server：
 
-```json
-{
-  "CONFIG": {
-    "base_url": "https://qa.example.com",
-    "timeout": 30
-  }
-}
-```
+- `store.json` 保存 users、devices、missions、scripts metadata、audit。
+- Docker 部署時，`/usr/src/app/data` 會掛載到主機 `SUPER_RESCUER_DATA_DIR`。
+- Docker 部署時，上傳腳本實體檔放在 `/usr/src/app/scripts`，並掛載到主機 `SUPER_RESCUER_SCRIPTS_DIR`。
+- Server 程式實際讀寫位置由 `SCRIPTS_DIR` 控制。
 
-目前程式會把 value 用 Python `str(value)` 轉成字串，巢狀 object 會變成類似 `"{'base_url': 'https://qa.example.com', 'timeout': 30}"`，這不是標準 JSON 字串。
+Agent：
 
-建議改成傳 JSON 字串：
+- `AGENT_DATA` 控制工作目錄。
+- 預設是 `/tmp/airtest_agent`。
+- 下載腳本、解壓縮資料、stdout log、report zip 都會在這個工作目錄下產生。
 
-```json
-{
-  "CONFIG_JSON": "{\"base_url\":\"https://qa.example.com\",\"timeout\":30}"
-}
-```
+## 目前限制
 
-Airtest：
-
-```python
-import json
-import os
-
-config = json.loads(os.getenv("CONFIG_JSON", "{}"))
-base_url = config.get("base_url", "https://dev.example.com")
-timeout = int(config.get("timeout", 10))
-```
-
-如果設定很多，也可以把設定檔放在腳本包內，UI 只傳選擇哪個設定檔：
-
-UI：
-
-```json
-{
-  "CONFIG_NAME": "qa"
-}
-```
-
-Airtest：
-
-```python
-import json
-import os
-from pathlib import Path
-
-config_name = os.getenv("CONFIG_NAME", "dev")
-config_path = Path(__file__).parent / "configs" / f"{config_name}.json"
-config = json.loads(config_path.read_text(encoding="utf-8"))
-```
-
-### 預設值與必填檢查
-
-建議在 Airtest 腳本集中處理設定，避免變數缺漏時任務跑到一半才失敗。
-
-```python
-import os
-
-def required_env(name):
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value
-
-ENV = os.getenv("ENV", "dev")
-ACCOUNT = required_env("ACCOUNT")
-PASSWORD = required_env("PASSWORD")
-RETRY = int(os.getenv("RETRY", "1"))
-```
-
-### 常見錯誤
-
-| 問題 | 原因 | 解法 |
-| --- | --- | --- |
-| UI 提示 `Variables must be valid JSON` | JSON 格式錯誤 | 使用雙引號、移除尾端逗號、確認最外層是 object |
-| 腳本讀不到變數 | key 名稱不一致 | UI 的 `ENV` 必須對應腳本的 `os.getenv("ENV")` |
-| 數字比較怪怪的 | `os.getenv()` 讀到的是字串 | 使用 `int()` / `float()` 轉型 |
-| 布林判斷錯誤 | `"False"` 字串在 Python if 中仍為 truthy | 用 `.lower() in ("true", "1", "yes")` |
-| 複雜 JSON 解析失敗 | 巢狀 object 被轉成 Python 字串格式 | 傳 JSON 字串，腳本用 `json.loads()` |
-| 密碼出現在 log | 腳本或系統印出了環境變數 | 不要 print 敏感值，正式密碼不要直接放 UI 變數欄 |
-
-### 建議的腳本模板
-
-```python
-# -*- encoding=utf8 -*-
-from airtest.core.api import *
-import json
-import os
-
-auto_setup(__file__)
-
-def getenv_bool(name, default=False):
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.lower() in ("true", "1", "yes", "y")
-
-def getenv_int(name, default):
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    return int(raw)
-
-ENV = os.getenv("ENV", "dev")
-ROBOT_ID = os.getenv("ROBOT_ID", "unknown")
-RETRY = getenv_int("RETRY", 1)
-DEBUG = getenv_bool("DEBUG", False)
-CONFIG = json.loads(os.getenv("CONFIG_JSON", "{}"))
-
-print("ENV =", ENV)
-print("ROBOT_ID =", ROBOT_ID)
-print("RETRY =", RETRY)
-print("DEBUG =", DEBUG)
-
-for attempt in range(RETRY):
-    print(f"Attempt {attempt + 1}/{RETRY}")
-    # Airtest steps here
-```
-
-## 權限與角色
-
-目前角色：
-
-| 角色 | 能力 |
-| --- | --- |
-| `admin` | 登入、查看裝置、上傳與執行 Airtest、查看 audit、管理使用者 |
-| `operator` | 登入、查看裝置、上傳與執行 Airtest、查看 audit |
-
-## 目前沒有的功能
-
-以下功能不在目前程式碼中，文件已移除相關部署與操作說明：
-
-- Android APK 專案與安裝流程。
-- 手機或機器人即時畫面串流。
-- WebRTC / WebCodecs 播放。
-- 遠端檔案總管。
-- 遠端 Shell 終端機 UI。
-- TTS 控制。
-- 錄影列表與串流 API。
-- React 前端或 FastAPI 後端。
+- 目前沒有 Pause。已實作的是 Stop，也就是停止目前 Airtest subprocess。
+- 目前沒有排程佇列。每台 Agent 同時間只跑一個任務。
+- 資料夾上傳會壓成 ZIP，不會在 Server 上保留原始目錄樹作為獨立資料夾。
+- Uploaded Scripts 可以管理上傳項目，但目前沒有搜尋、分頁、標籤或版本管理。
+- Stop 不會清理 Android 裝置上已經被測試腳本改變的狀態。

@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const multer = require('multer');
+const JSZip = require('jszip');
 
 const store = require('./store');
 
@@ -30,6 +31,8 @@ const RATE_LIMIT_MAX_REQUESTS = 100; // 每分鐘最多 100 次請求
 const LOGIN_RATE_LIMIT_MAX = 50; // 下調限制,但保留防護 (原為 5,太嚴格了)
 
 fs.mkdirSync(scriptsDir, { recursive: true });
+const directoryUploadTempDir = path.join(scriptsDir, '.tmp-directory-uploads');
+fs.mkdirSync(directoryUploadTempDir, { recursive: true });
 
 // Setup multer for script upload
 const scriptStorage = multer.diskStorage({
@@ -41,6 +44,7 @@ const scriptStorage = multer.diskStorage({
   }
 });
 const uploadScripts = multer({ storage: scriptStorage });
+const uploadDirectory = multer({ dest: directoryUploadTempDir });
 
 setInterval(() => {
   const now = Date.now();
@@ -435,9 +439,51 @@ function serializeScript(script) {
     size: typeof size === 'number' ? size : null,
     fileExists,
     uploadedBy: script.uploadedBy || null,
+    uploadType: script.uploadType || 'file',
+    fileCount: typeof script.fileCount === 'number' ? script.fileCount : null,
+    originalDirectoryName: script.originalDirectoryName || null,
+    originalSize: typeof script.originalSize === 'number' ? script.originalSize : null,
     createdAt: script.createdAt,
     updatedAt: script.updatedAt,
   };
+}
+
+function safeDisplayName(value, fallback) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  const lastPart = raw.replace(/\\/g, '/').split('/').filter(Boolean).pop() || fallback;
+  const cleaned = lastPart.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, ' ').trim();
+  return cleaned || fallback;
+}
+
+function normalizeUploadRelativePath(value) {
+  if (typeof value !== 'string') {
+    throw new Error('invalid_relative_path');
+  }
+
+  const normalized = value.replace(/\\/g, '/').trim();
+  if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) {
+    throw new Error('invalid_relative_path');
+  }
+
+  const parts = normalized.split('/').filter((part) => part && part !== '.');
+  if (!parts.length || parts.some((part) => part === '..' || part.includes('\0'))) {
+    throw new Error('invalid_relative_path');
+  }
+
+  return parts.join('/');
+}
+
+function cleanupUploadedTempFiles(files) {
+  (files || []).forEach((file) => {
+    if (!file.path) return;
+    try {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    } catch (err) {
+      console.warn(`Failed to remove temp upload ${file.path}:`, err.message);
+    }
+  });
 }
 
 app.get('/api/scripts', authRequired, (req, res) => {
@@ -479,6 +525,110 @@ app.post('/api/scripts/upload', authRequired, uploadScripts.single('file'), (req
   });
 
   return res.json({ script: serializeScript(script) });
+});
+
+app.post('/api/scripts/upload-directory', authRequired, uploadDirectory.array('files'), async (req, res) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  let destinationPath = null;
+  let persisted = false;
+
+  try {
+    if (!files.length) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    let relativePaths;
+    try {
+      relativePaths = JSON.parse(req.body.relativePathsJson || '[]');
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid relative path metadata' });
+    }
+
+    if (!Array.isArray(relativePaths) || relativePaths.length !== files.length) {
+      return res.status(400).json({ error: 'Relative path metadata does not match uploaded files' });
+    }
+
+    const seenPaths = new Set();
+    const normalizedPaths = relativePaths.map((relativePath) => {
+      const normalizedPath = normalizeUploadRelativePath(relativePath);
+      const key = normalizedPath.toLowerCase();
+      if (seenPaths.has(key)) {
+        throw new Error('duplicate_relative_path');
+      }
+      seenPaths.add(key);
+      return normalizedPath;
+    });
+
+    const firstRoot = normalizedPaths[0].split('/')[0];
+    const safeRootName = safeDisplayName(req.body.rootName || firstRoot, 'airtest-directory');
+    const rawZipBaseName = safeRootName.toLowerCase().endsWith('.zip')
+      ? safeRootName.slice(0, -4)
+      : safeRootName;
+    const zipBaseName = rawZipBaseName || 'airtest-directory';
+    const displayFilename = `${zipBaseName}.zip`;
+    const storedName = `${Date.now()}-${crypto.randomUUID()}-${zipBaseName}.zip`;
+    destinationPath = path.join(scriptsDir, storedName);
+
+    const zip = new JSZip();
+    let originalSize = 0;
+    files.forEach((file, index) => {
+      originalSize += file.size || 0;
+      zip.file(normalizedPaths[index], fs.readFileSync(file.path));
+    });
+
+    const zipBuffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+    fs.writeFileSync(destinationPath, zipBuffer);
+
+    const now = Date.now();
+    const script = {
+      id: crypto.randomUUID(),
+      filename: displayFilename,
+      stored_name: storedName,
+      path: destinationPath,
+      size: zipBuffer.length,
+      originalSize,
+      uploadedBy: req.user.username,
+      uploadType: 'directory',
+      originalDirectoryName: safeRootName,
+      fileCount: files.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.addScript(script);
+    persisted = true;
+    store.addAudit({
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      actor: req.user.username,
+      action: 'script-upload-directory',
+      deviceId: null,
+      meta: `${displayFilename} (${files.length} files)`,
+    });
+
+    return res.json({ script: serializeScript(script) });
+  } catch (err) {
+    if (destinationPath && !persisted && fs.existsSync(destinationPath)) {
+      try {
+        fs.unlinkSync(destinationPath);
+      } catch (cleanupErr) {
+        console.warn(`Failed to remove incomplete directory upload ${destinationPath}:`, cleanupErr.message);
+      }
+    }
+
+    if (err.message === 'invalid_relative_path' || err.message === 'duplicate_relative_path') {
+      return res.status(400).json({ error: err.message });
+    }
+
+    console.error('Directory upload failed:', err);
+    return res.status(500).json({ error: 'directory_upload_failed', message: err.message });
+  } finally {
+    cleanupUploadedTempFiles(files);
+  }
 });
 
 app.get('/api/scripts/:id', deviceOrUserAuthRequired, (req, res) => {

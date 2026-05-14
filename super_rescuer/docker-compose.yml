@@ -12,7 +12,9 @@
       DEVICE_SHARED_KEY: "${DEVICE_SHARED_KEY:-nuwa8888}"
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-*}"
       WS_FRAME_DEBUG: "${WS_FRAME_DEBUG:-1}"
+      SCRIPTS_DIR: "/usr/src/app/scripts"
     volumes:
       - "${SUPER_RESCUER_DATA_DIR:-/opt/super-rescuer/data}:/usr/src/app/data"
       - "${SUPER_RESCUER_RECORDINGS_DIR:-/opt/super-rescuer/recordings}:/usr/src/app/recordings"
+      - "${SUPER_RESCUER_SCRIPTS_DIR:-/opt/super-rescuer/scripts}:/usr/src/app/scripts"
     restart: unless-stopped
