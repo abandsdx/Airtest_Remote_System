@@ -92,7 +92,7 @@ class AgentClient:
     async def _run_task(self, message: Dict[str, Any]) -> None:
         task_id = message["task_id"]
         script_url = message["script_url"]
-        script_name = message.get("script_name", "script.air")
+        script_name = message.get("script_name") or "script.zip"
         variables = message.get("vars", message.get("variables", {}))
         base_http = _ws_to_http(self.config.server_host)
         full_script_url = script_url if script_url.startswith("http") else urljoin(base_http, script_url)

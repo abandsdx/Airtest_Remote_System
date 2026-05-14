@@ -927,6 +927,23 @@ function sendToDevice(deviceId, payload) {
   return true;
 }
 
+function enrichRunTaskMessage(msg) {
+  if (!msg || msg.type !== 'run_task' || !msg.script_id) {
+    return msg;
+  }
+
+  const script = (store.data.scripts || []).find((item) => item.id === msg.script_id);
+  if (!script) {
+    return msg;
+  }
+
+  return {
+    ...msg,
+    script_url: msg.script_url || `/api/scripts/${script.id}`,
+    script_name: script.filename || msg.script_name || 'script.zip',
+  };
+}
+
 function broadcastDeviceStatus(deviceId, patch) {
   store.updateDeviceStatus(deviceId, patch);
   const device = store.data.devices.find((item) => item.deviceId === deviceId);
@@ -1189,7 +1206,8 @@ wssOperator.on('connection', (ws, req) => {
     }
 
     if (['control', 'service', 'run_task', 'stop_task'].includes(msg.type)) {
-      sendToDevice(msg.deviceId, JSON.stringify(msg));
+      const outbound = msg.type === 'run_task' ? enrichRunTaskMessage(msg) : msg;
+      sendToDevice(msg.deviceId, JSON.stringify(outbound));
     }
   });
 

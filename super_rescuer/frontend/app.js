@@ -659,6 +659,7 @@ if (airtestRunBtn) {
       alert('Please select a script');
       return;
     }
+    const selectedScript = airtestScripts.find((script) => script.id === scriptId);
 
     if (!currentDeviceId) {
       alert('Please select a device from the list first!');
@@ -696,6 +697,7 @@ if (airtestRunBtn) {
         task_id: taskId,
         script_id: scriptId,
         script_url: `${apiBase}/api/scripts/${scriptId}`,
+        script_name: selectedScript?.filename || 'script.zip',
         vars: vars
       }));
     } catch (err) {
