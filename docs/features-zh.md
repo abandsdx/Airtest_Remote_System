@@ -55,6 +55,7 @@ Agent 是 Python 程式，負責：
 - 使用 `AGENT_ID` 顯示在 Device Wall。
 - 偵測本機 Android 裝置。
 - 使用 ADB serial 執行 Airtest。
+- 執行時會把 ADB serial 轉成 Airtest CLI 可接受的 `Android://127.0.0.1:5037/<serial>` device URI。
 - 接收 `run_task`。
 - 從 Server 下載腳本。
 - 如果下載的是 ZIP，安全解壓縮並尋找第一個 `.air` 目錄。

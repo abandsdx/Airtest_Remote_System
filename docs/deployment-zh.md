@@ -261,6 +261,18 @@ airtest_agent/main.py
 | `ADB_SERIAL` | 空 | 指定 ADB 裝置 serial |
 | `AGENT_DATA` | `/tmp/airtest_agent` | Agent 工作目錄，保存下載腳本、log、report |
 
+Agent 會把 ADB serial 轉成 Airtest CLI 使用的 device URI：
+
+```text
+Android://127.0.0.1:5037/<serial>
+```
+
+如果 `adb devices` 顯示 serial 是 `ABC123`，實際執行 Airtest 時會使用：
+
+```text
+--device Android://127.0.0.1:5037/ABC123
+```
+
 ## 6. 上線後操作流程
 
 1. 部署 Server。

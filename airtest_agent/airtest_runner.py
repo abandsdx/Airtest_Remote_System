@@ -18,6 +18,15 @@ import requests
 logger = logging.getLogger("airtest-runner")
 
 
+def build_airtest_device_uri(device_serial: Optional[str]) -> Optional[str]:
+    if not device_serial:
+        return None
+    serial = device_serial.strip()
+    if "://" in serial:
+        return serial
+    return f"Android://127.0.0.1:5037/{serial}"
+
+
 class AirtestRunner:
     def __init__(self, workspace: Path) -> None:
         self.workspace = workspace
@@ -88,8 +97,9 @@ class AirtestRunner:
         output_file = log_dir / "stdout.log"
         log_tail = deque(maxlen=20)
         cmd = ["airtest", "run", str(script_path), "--log", str(log_dir)]
-        if device_serial:
-            cmd.extend(["--device", f"adb://{device_serial}"])
+        device_uri = build_airtest_device_uri(device_serial)
+        if device_uri:
+            cmd.extend(["--device", device_uri])
         logger.info("Running Airtest: %s", " ".join(cmd))
 
         env = os.environ.copy()
