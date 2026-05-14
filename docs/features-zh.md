@@ -165,7 +165,7 @@ Agent 下載 ZIP 後會解壓縮，並尋找第一個 `.air` 目錄來執行。�
 from nuwa_commons import helper
 ```
 
-請把 `nuwa_commons.py` 或 `nuwa_commons/` 一起放進上傳內容。Agent 執行時會把 `.air` 目錄與解壓後的上一層目錄加進 `PYTHONPATH`，所以以下兩種都可以被搜尋到：
+可以把 `nuwa_commons.py` 或 `nuwa_commons/` 一起放進上傳內容。Agent 執行時會把 `.air` 目錄與解壓後的上一層目錄加進 `PYTHONPATH`，所以以下兩種都可以被搜尋到：
 
 ```text
 Superdeliver.air/
@@ -201,6 +201,21 @@ Superdeliver_package/
 ```
 
 然後用 Upload Folder 上傳 `Superdeliver_package/`。
+
+如果 `nuwa_commons` 是所有專案共用，而且你不想每個專案都重包一份，可以改用 Agent 共用路徑。把共用模組固定放在 Agent 主機，例如：
+
+```text
+/opt/airtest-shared/
+`-- nuwa_commons/
+```
+
+然後在 Agent 啟動環境設定：
+
+```bash
+AIRTEST_EXTRA_PYTHONPATH=/opt/airtest-shared
+```
+
+之後上傳任務時可以只上傳目標 `.air` 專案資料夾，例如 `Superdeliver.air/`。每次 Airtest subprocess 啟動時，Agent 都會把 `/opt/airtest-shared` 加進 `PYTHONPATH`，所以 `from nuwa_commons import ...` 會從同一份共用庫載入。更新 `nuwa_commons` 時只需要更新 Agent 主機上的 `/opt/airtest-shared/nuwa_commons/`，不用重包每個專案。
 
 錯誤範例：
 

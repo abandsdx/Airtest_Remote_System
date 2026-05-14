@@ -260,6 +260,7 @@ airtest_agent/main.py
 | `AGENT_ID` | 隨機 8 碼 | 顯示在 Device Wall 的 Agent ID |
 | `ADB_SERIAL` | 空 | 指定 ADB 裝置 serial |
 | `AGENT_DATA` | `/tmp/airtest_agent` | Agent 工作目錄，保存下載腳本、log、report |
+| `AIRTEST_EXTRA_PYTHONPATH` | 空 | 額外加入 Airtest subprocess 的 Python 搜尋路徑，可放共用模組如 `nuwa_commons` |
 
 Agent 會把 ADB serial 轉成 Airtest CLI 使用的 device URI：
 
@@ -326,7 +327,7 @@ Server 會把資料夾壓成 ZIP。Agent 下載後解壓縮，尋找第一個 `.
 
 注意：Airtest 的 `.air` 是資料夾，不是單一檔案。請不要用 Upload ZIP 上傳一個叫 `script.air` 的單一檔案；那會讓 Airtest 嘗試讀取 `script.air/script.py` 並失敗。正確做法是用 Upload Folder 選 `script.air/` 資料夾，或上傳包含 `script.air/` 資料夾的 ZIP。
 
-如果腳本需要 `nuwa_commons.py`、`common/` 這類共用 Python 模組，必須一起上傳。Agent 會把 `.air` 目錄與解壓後上一層目錄加入 `PYTHONPATH`，但不會自動從 Agent 主機其他目錄尋找專案外的模組。
+如果腳本需要 `nuwa_commons.py`、`common/` 這類共用 Python 模組，有兩種做法：跟著任務一起上傳，或放在 Agent 的 `AIRTEST_EXTRA_PYTHONPATH` 共用路徑。Agent 會把 `.air` 目錄與解壓後上一層目錄加入 `PYTHONPATH`；若有設定 `AIRTEST_EXTRA_PYTHONPATH`，也會一起加入。
 
 如果你的原始目錄是 `Merge/`，裡面同時有很多 `.air` 專案和 `nuwa_commons/`，不要直接上傳整個 `Merge/`。請建立只包含目標專案與共用模組的資料夾，例如：
 
@@ -337,6 +338,36 @@ Superdeliver_package/
 ```
 
 再用 Upload Folder 上傳 `Superdeliver_package/`。這樣 Agent 只會找到一個 `.air` 專案，且 `nuwa_commons` 會在 `PYTHONPATH` 搜尋範圍內。
+
+如果 `nuwa_commons` 是所有專案共用，建議用 Agent 共用路徑，避免每次共用庫改版都要重包所有 `.air` 專案：
+
+```bash
+sudo mkdir -p /opt/airtest-shared
+```
+
+把 `nuwa_commons/` 放成：
+
+```text
+/opt/airtest-shared/nuwa_commons/
+```
+
+systemd service 加上：
+
+```ini
+Environment=AIRTEST_EXTRA_PYTHONPATH=/opt/airtest-shared
+```
+
+手動啟動 Agent 時則加在同一行：
+
+```bash
+AIRTEST_EXTRA_PYTHONPATH=/opt/airtest-shared \
+CLOUD_SERVER=ws://192.168.1.82:13000 \
+DEVICE_SHARED_KEY=nuwa8888 \
+AGENT_ID=nuwa-agent-01 \
+python -m airtest_agent.main
+```
+
+之後 Upload Folder 可以只上傳 `Superdeliver.air/`。更新 `nuwa_commons` 時，只要更新 Agent 主機上的 `/opt/airtest-shared/nuwa_commons/`；下一次 Run Task 會由新的 Airtest subprocess 讀到更新後內容。
 
 ### 有 Pause 嗎
 

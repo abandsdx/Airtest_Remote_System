@@ -28,8 +28,18 @@ def build_airtest_device_uri(device_serial: Optional[str]) -> Optional[str]:
     return f"Android://127.0.0.1:5037/{serial}"
 
 
-def build_pythonpath(script_path: Path, existing: Optional[str] = None) -> str:
-    candidates = [script_path, script_path.parent]
+def _split_pythonpath(value: Optional[str]) -> list[str]:
+    if not value:
+        return []
+    return [item for item in value.split(os.pathsep) if item]
+
+
+def build_pythonpath(
+    script_path: Path,
+    existing: Optional[str] = None,
+    extra_paths: Optional[str] = None,
+) -> str:
+    candidates = [script_path, script_path.parent, *[Path(item).expanduser() for item in _split_pythonpath(extra_paths)]]
     seen = set()
     paths = []
     for candidate in candidates:
@@ -135,7 +145,11 @@ class AirtestRunner:
         logger.info("Running Airtest: %s", " ".join(cmd))
 
         env = os.environ.copy()
-        env["PYTHONPATH"] = build_pythonpath(script_path, env.get("PYTHONPATH"))
+        env["PYTHONPATH"] = build_pythonpath(
+            script_path,
+            existing=env.get("PYTHONPATH"),
+            extra_paths=env.get("AIRTEST_EXTRA_PYTHONPATH"),
+        )
         if variables:
             for k, v in variables.items():
                 env[str(k)] = str(v)
