@@ -1127,16 +1127,16 @@ wssDevice.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'log' && deviceId) {
-        // 如果 Agent 沒帶 task_id，從 DB 查該設備最新的 running task 來補齊
-        const taskId = msg.task_id || await taskDb.getRunningTaskId(deviceId);
-
-        taskDb.recordStatLines({
-          taskId: taskId,
-          deviceId,
-          text: msg.message || msg.text || '',
-        }).catch((err) => console.warn('[DB] Failed to persist task stats:', err.message));
-
-        broadcastToOperators({ ...msg, task_id: taskId, deviceId });
+        // 非同步補齊 taskId 並存 DB，不阻擋 broadcastToOperators
+        (async () => {
+          const taskId = msg.task_id || await taskDb.getRunningTaskId(deviceId);
+          taskDb.recordStatLines({
+            taskId,
+            deviceId,
+            text: msg.message || msg.text || '',
+          }).catch((err) => console.warn('[DB] Failed to persist task stats:', err.message));
+        })().catch(() => {});
+        broadcastToOperators({ ...msg, deviceId });
         return;
       }
 
