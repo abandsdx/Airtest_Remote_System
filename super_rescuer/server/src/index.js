@@ -1223,6 +1223,27 @@ wssOperator.on('connection', (ws, req) => {
       }
       operators.add(ws);
       sendText(ws, { type: 'auth-ok', user });
+
+      // 推送目前執行中任務給新連線的 Operator，讓重整後可以恢復狀態
+      taskDb.listTaskRuns(50).then(async (runs) => {
+        const running = runs.filter((r) => r.status === 'running');
+        if (!running.length) return;
+        const tasksWithStats = await Promise.all(
+          running.map(async (run) => {
+            const stats = await taskDb.getTaskStats(run.task_id);
+            const statsMap = {};
+            for (const row of stats) {
+              statsMap[row.stat_key] = row.stat_type === 'number'
+                ? { value: Number(row.stat_number), updatedAt: new Date(row.updated_at).getTime() }
+                : { value: row.stat_value, updatedAt: new Date(row.updated_at).getTime() };
+            }
+            return { ...run, statsMap };
+          })
+        );
+        if (ws.readyState === ws.OPEN) {
+          sendText(ws, { type: 'restore-tasks', tasks: tasksWithStats });
+        }
+      }).catch((err) => console.warn('[DB] Failed to push restore-tasks:', err.message));
       return;
     }
 
@@ -1232,7 +1253,6 @@ wssOperator.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'watch') {
-
       const entry = devices.get(msg.deviceId);
       if (!entry) {
         sendText(ws, { type: 'watch-failed', reason: 'offline' });
@@ -1250,7 +1270,6 @@ wssOperator.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'unwatch') {
-
       sendText(ws, { type: 'unwatch-ok' });
       return;
     }
@@ -1274,7 +1293,6 @@ wssOperator.on('connection', (ws, req) => {
       ws.authTimeout = null;
     }
     operators.delete(ws);
-
   });
 
   ws.on('error', (err) => {

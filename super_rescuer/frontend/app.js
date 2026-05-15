@@ -476,6 +476,11 @@ function handleTextMessage(data) {
     return;
   }
 
+  if (message.type === 'restore-tasks') {
+    handleRestoreTasks(message.tasks || []);
+    return;
+  }
+
   if (message.type === 'task_result') {
     hideStdinInput();
     handleAirtestTaskResult(message);
@@ -1083,6 +1088,63 @@ function handleAirtestTaskEvent(msg) {
   if (event === 'stop_ignored' && deviceId) {
     clearDeviceTask(deviceId, msg.task_id);
   }
+}
+
+// ======== 重整後恢復任務狀態 ========
+function handleRestoreTasks(tasks) {
+  if (!tasks || !tasks.length) return;
+  appendAirtestLog(`\n[System] 🔄 恢復 ${tasks.length} 個執行中任務...\n`);
+
+  tasks.forEach((run) => {
+    const deviceId = run.device_id;
+    const taskId = run.task_id;
+    const scriptName = run.script_name || '--';
+    // 用 DB 記錄的 started_at 還原真實開始時間，計時器才會從正確的位置繼續
+    const startedAt = run.started_at ? new Date(run.started_at).getTime() : Date.now();
+
+    if (!deviceId || !taskId) return;
+
+    // 恢復 activeTasks（讓 Run/Stop 按鈕狀態正確）
+    if (!activeTasks[deviceId]) {
+      setDeviceTask(deviceId, taskId, 'running');
+    }
+    taskDeviceIndex[taskId] = deviceId;
+
+    // 恢復 airtestStatsState（讓計時器、狀態列正確顯示）
+    airtestStatsState.lastDeviceId = deviceId;
+    if (!airtestStatsState.byDevice[deviceId]) {
+      airtestStatsState.byDevice[deviceId] = { current: null, last: null, custom: {} };
+    }
+    const ds = airtestStatsState.byDevice[deviceId];
+    ds.current = {
+      taskId,
+      scriptName,
+      status: 'running',
+      startedAt,   // ← 關鍵：從 DB 時間反推，不從 Date.now() 開始
+      endedAt: null,
+    };
+    ds.last = ds.current;
+
+    // 恢復客製化統計數據（[STAT] 已累積在 DB 裡的值）
+    if (run.statsMap && typeof run.statsMap === 'object') {
+      for (const [key, entry] of Object.entries(run.statsMap)) {
+        ds.custom[key] = entry;
+      }
+    }
+
+    appendAirtestLog(`[System] ✅ [${deviceId}][${taskId}] 已恢復，腳本: ${scriptName}\n`);
+  });
+
+  // 恢復執行次數計數（只計不重複的 taskId）
+  tasks.forEach((run) => {
+    const taskKey = `${run.device_id}:${run.task_id}`;
+    if (!airtestStatsState.completedTasks.has(taskKey)) {
+      airtestStatsState.totals.runs = Math.max(airtestStatsState.totals.runs, tasks.length);
+    }
+  });
+
+  renderAirtestStats();
+  ensureAirtestStatsTimer();
 }
 
 // ======== stdin 互動 ========
