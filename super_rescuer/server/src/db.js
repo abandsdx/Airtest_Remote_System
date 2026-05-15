@@ -83,6 +83,16 @@ async function init() {
 
 async function recordTaskStart(task) {
   if (!task?.task_id) return;
+  
+  // 自動清理：啟動新任務時，將該設備舊的 'running' 任務標記為停止
+  if (task.deviceId) {
+    await query(
+      `UPDATE task_runs SET status = 'stopped', ended_at = NOW(), updated_at = NOW() 
+       WHERE device_id = $1 AND status = 'running' AND task_id <> $2`,
+      [task.deviceId, task.task_id]
+    ).catch(e => console.warn('[DB] Failed to cleanup old tasks:', e.message));
+  }
+
   await query(
     `
       INSERT INTO task_runs (task_id, device_id, script_id, script_name, status, started_at, updated_at)
