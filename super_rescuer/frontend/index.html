@@ -63,6 +63,7 @@
       <div class="brand">Airtest Console <span id="wsStatus" class="ws-status disconnected"
           title="WebSocket disconnected"></span></div>
       <div class="session">
+        <a class="ghost link-button" href="#reportsCard">Reports</a>
         <a id="userManagementLink" class="ghost link-button hidden" href="user-management.html">User Management</a>
         <a class="ghost link-button" href="audit.html">Audit Log</a>
         <span id="sessionUser"></span>
@@ -147,6 +148,80 @@
             <input id="stdinInputField" type="text" placeholder="輸入後按 Enter 或點擊送出" style="flex:1; font-family: monospace;"/>
             <button id="stdinSendBtn" type="button">送出</button>
           </div>
+        </div>
+
+        <div id="reportsCard" class="card report-card">
+          <div class="card-titlebar">
+            <h2>Reports</h2>
+            <button id="reportRefreshBtn" type="button" class="ghost compact">Refresh</button>
+          </div>
+
+          <div class="report-filters">
+            <label>
+              From
+              <input id="reportFromDate" type="date" />
+            </label>
+            <label>
+              To
+              <input id="reportToDate" type="date" />
+            </label>
+            <label>
+              Agent
+              <select id="reportAgentSelect">
+                <option value="">All agents</option>
+              </select>
+            </label>
+            <label>
+              Device
+              <select id="reportDeviceSelect">
+                <option value="">All devices</option>
+              </select>
+            </label>
+            <label>
+              Script
+              <select id="reportScriptSelect">
+                <option value="">All scripts</option>
+              </select>
+            </label>
+            <label>
+              Software
+              <select id="reportSoftwareSelect">
+                <option value="">All versions</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select id="reportStatusSelect">
+                <option value="">All statuses</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="reportStatusText" class="muted report-status-text"></div>
+          <div id="reportSummary" class="report-summary"></div>
+
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Start</th>
+                  <th>Agent</th>
+                  <th>Device</th>
+                  <th>Software</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th>Rounds</th>
+                  <th>Selected</th>
+                  <th>Served</th>
+                  <th>Last</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="reportRunsBody"></tbody>
+            </table>
+          </div>
+
+          <div id="reportDetail" class="report-detail hidden"></div>
         </div>
 
       </section>

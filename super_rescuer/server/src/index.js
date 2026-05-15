@@ -441,6 +441,41 @@ app.get('/api/task-runs/:id/stats', authRequired, async (req, res) => {
   }
 });
 
+function getReportFiltersFromQuery(query) {
+  return {
+    from: query.from || null,
+    to: query.to || null,
+    deviceId: query.deviceId || null,
+    agentId: query.agentId || null,
+    scriptName: query.scriptName || null,
+    softwareVersion: query.softwareVersion || null,
+    status: query.status || null,
+    limit: query.limit || null,
+  };
+}
+
+app.get('/api/reports/options', authRequired, async (req, res) => {
+  try {
+    const options = await taskDb.getReportFilterOptions();
+    res.json({ dbReady: taskDb.isReady(), options });
+  } catch (err) {
+    res.status(500).json({ error: 'report_options_query_failed', message: err.message });
+  }
+});
+
+app.get('/api/reports/task-summary', authRequired, async (req, res) => {
+  try {
+    const filters = getReportFiltersFromQuery(req.query);
+    const [summary, runs] = await Promise.all([
+      taskDb.getReportSummary(filters),
+      taskDb.listReportRuns(filters),
+    ]);
+    res.json({ dbReady: taskDb.isReady(), summary, runs });
+  } catch (err) {
+    res.status(500).json({ error: 'report_query_failed', message: err.message });
+  }
+});
+
 function serializeScript(script) {
   let size = script.size;
   let fileExists = false;

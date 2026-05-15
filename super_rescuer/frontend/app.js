@@ -38,6 +38,18 @@ const stdinInputArea = document.getElementById('stdinInputArea');
 const stdinPromptLabel = document.getElementById('stdinPromptLabel');
 const stdinInputField = document.getElementById('stdinInputField');
 const stdinSendBtn = document.getElementById('stdinSendBtn');
+const reportRefreshBtn = document.getElementById('reportRefreshBtn');
+const reportFromDate = document.getElementById('reportFromDate');
+const reportToDate = document.getElementById('reportToDate');
+const reportAgentSelect = document.getElementById('reportAgentSelect');
+const reportDeviceSelect = document.getElementById('reportDeviceSelect');
+const reportScriptSelect = document.getElementById('reportScriptSelect');
+const reportSoftwareSelect = document.getElementById('reportSoftwareSelect');
+const reportStatusSelect = document.getElementById('reportStatusSelect');
+const reportStatusText = document.getElementById('reportStatusText');
+const reportSummary = document.getElementById('reportSummary');
+const reportRunsBody = document.getElementById('reportRunsBody');
+const reportDetail = document.getElementById('reportDetail');
 
 let _pendingStdinDeviceId = null;
 let _pendingStdinTaskId = null;
@@ -57,6 +69,8 @@ const WS_MAX_RECONNECT_ATTEMPTS = 50;
 
 let currentDeviceId = null;
 let currentUser = null;
+let reportRuns = [];
+let selectedReportTaskId = null;
 const activeTasks = {};
 const taskDeviceIndex = {};
 const airtestStatsState = {
@@ -167,6 +181,22 @@ function formatStatValue(value) {
   return String(value ?? '');
 }
 
+function toNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function formatCount(value) {
+  const number = toNumber(value);
+  return Number.isInteger(number) ? String(number) : number.toFixed(2);
+}
+
+function formatShortText(value, maxLength = 18) {
+  const text = String(value || '--');
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}...`;
+}
+
 function getUploadRelativePath(file) {
   return file.webkitRelativePath || file.name;
 }
@@ -244,6 +274,8 @@ async function login() {
     await loadData();
     connectWebSocket();
     fetchAirtestScripts();
+    loadReportOptions();
+    loadReports();
   } catch (err) {
     const msg = String(err);
     if (msg.includes('429')) setError('Too many attempts. Wait 1 min.');
@@ -299,6 +331,8 @@ async function restoreSession() {
     await loadData();
     connectWebSocket();
     fetchAirtestScripts();
+    loadReportOptions();
+    loadReports();
   } catch (err) {
     authToken = '';
     localStorage.removeItem(STORAGE_TOKEN_KEY);
@@ -1041,6 +1075,255 @@ function clearAirtestLogs() {
   airtestLogsOutput.textContent = '';
 }
 
+function setReportStatus(message, isError = false) {
+  if (!reportStatusText) return;
+  reportStatusText.textContent = message || '';
+  reportStatusText.classList.toggle('error', isError);
+}
+
+function populateReportSelect(select, values, placeholder) {
+  if (!select) return;
+  const currentValue = select.value;
+  const options = [`<option value="">${escapeHtml(placeholder)}</option>`]
+    .concat((values || []).map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`));
+  select.innerHTML = options.join('');
+  if ((values || []).includes(currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function dateInputToIso(value, endOfDay = false) {
+  if (!value) return '';
+  const parts = value.split('-').map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return '';
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  if (endOfDay) date.setDate(date.getDate() + 1);
+  return date.toISOString();
+}
+
+function buildReportQuery() {
+  const params = new URLSearchParams();
+  const from = dateInputToIso(reportFromDate?.value || '');
+  const to = dateInputToIso(reportToDate?.value || '', true);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (reportAgentSelect?.value) params.set('agentId', reportAgentSelect.value);
+  if (reportDeviceSelect?.value) params.set('deviceId', reportDeviceSelect.value);
+  if (reportScriptSelect?.value) params.set('scriptName', reportScriptSelect.value);
+  if (reportSoftwareSelect?.value) params.set('softwareVersion', reportSoftwareSelect.value);
+  if (reportStatusSelect?.value) params.set('status', reportStatusSelect.value);
+  params.set('limit', '200');
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+function getReportStat(run, key) {
+  return run?.stats?.[key]?.value ?? null;
+}
+
+function getReportNumber(run, key) {
+  return toNumber(getReportStat(run, key));
+}
+
+function getReportText(run, key, fallback = '--') {
+  const value = getReportStat(run, key);
+  return value === null || value === undefined || value === '' ? fallback : String(value);
+}
+
+function getReportRunDurationMs(run) {
+  if (run?.duration_ms !== null && run?.duration_ms !== undefined) {
+    return toNumber(run.duration_ms, null);
+  }
+  const durationSeconds = getReportStat(run, 'duration_seconds');
+  if (durationSeconds !== null && durationSeconds !== undefined) {
+    return toNumber(durationSeconds) * 1000;
+  }
+  if (run?.status === 'running' && run.started_at) {
+    const startedAt = new Date(run.started_at).getTime();
+    if (!Number.isNaN(startedAt)) return Math.max(0, Date.now() - startedAt);
+  }
+  return null;
+}
+
+function getReportRunStatus(run) {
+  return getReportText(run, 'result', run?.status || 'unknown');
+}
+
+function statusClassName(status) {
+  return String(status || 'unknown').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+}
+
+function renderReportSummary(summary = {}) {
+  if (!reportSummary) return;
+  const totalRuns = toNumber(summary.total_runs);
+  const succeededRuns = toNumber(summary.succeeded_runs);
+  const failedRuns = toNumber(summary.failed_runs);
+  const stoppedRuns = toNumber(summary.stopped_runs);
+  const runningRuns = toNumber(summary.running_runs);
+  const finishedRuns = succeededRuns + failedRuns + stoppedRuns;
+  const successRate = finishedRuns > 0 ? `${((succeededRuns / finishedRuns) * 100).toFixed(1)}%` : '--';
+  const items = [
+    ['Total Runs', formatCount(totalRuns)],
+    ['Succeeded', formatCount(succeededRuns)],
+    ['Failed', formatCount(failedRuns)],
+    ['Running', formatCount(runningRuns)],
+    ['Success Rate', successRate],
+    ['Total Duration', formatDuration(toNumber(summary.total_duration_ms))],
+    ['Avg Duration', formatDuration(toNumber(summary.average_duration_ms))],
+    ['Rounds', `${formatCount(summary.total_round_completed)} / ${formatCount(summary.total_round_started)}`],
+    ['Selected Tables', formatCount(summary.total_tables_selected)],
+    ['Served Tables', formatCount(summary.total_table_served)],
+  ];
+
+  reportSummary.innerHTML = items.map(([label, value]) => `
+    <div class="stat-tile">
+      <span class="stat-label">${escapeHtml(label)}</span>
+      <strong class="stat-value">${escapeHtml(value)}</strong>
+    </div>
+  `).join('');
+}
+
+function renderReportTable() {
+  if (!reportRunsBody) return;
+  if (!reportRuns.length) {
+    reportRunsBody.innerHTML = '<tr><td colspan="11" class="report-empty">No report data.</td></tr>';
+    if (reportDetail) reportDetail.classList.add('hidden');
+    return;
+  }
+
+  reportRunsBody.innerHTML = reportRuns.map((run) => {
+    const status = getReportRunStatus(run);
+    const agentId = getReportText(run, 'agent_id', run.device_id || '--');
+    const deviceSerial = getReportText(run, 'device_serial', run.device_id || '--');
+    const softwareVersion = getReportText(run, 'software_version');
+    const durationMs = getReportRunDurationMs(run);
+    const rounds = `${formatCount(getReportNumber(run, 'round_completed'))}/${formatCount(getReportNumber(run, 'round_started'))}`;
+    const selected = formatCount(getReportNumber(run, 'tables_selected'));
+    const served = formatCount(getReportNumber(run, 'table_served'));
+    const lastTable = getReportText(run, 'last_table');
+    return `
+      <tr>
+        <td>${escapeHtml(formatTimestamp(run.started_at))}</td>
+        <td class="report-mono" title="${escapeHtml(agentId)}">${escapeHtml(formatShortText(agentId, 22))}</td>
+        <td class="report-mono" title="${escapeHtml(deviceSerial)}">${escapeHtml(formatShortText(deviceSerial, 18))}</td>
+        <td class="report-mono" title="${escapeHtml(softwareVersion)}">${escapeHtml(formatShortText(softwareVersion, 18))}</td>
+        <td><span class="status-pill ${escapeHtml(statusClassName(status))}">${escapeHtml(status)}</span></td>
+        <td>${durationMs === null ? '--:--' : escapeHtml(formatDuration(durationMs))}</td>
+        <td>${escapeHtml(rounds)}</td>
+        <td>${escapeHtml(selected)}</td>
+        <td>${escapeHtml(served)}</td>
+        <td>${escapeHtml(lastTable)}</td>
+        <td><button type="button" class="ghost compact report-view-btn" data-task-id="${escapeHtml(run.task_id)}">View</button></td>
+      </tr>
+    `;
+  }).join('');
+
+  reportRunsBody.querySelectorAll('.report-view-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      toggleReportDetail(button.dataset.taskId);
+    });
+  });
+}
+
+function toggleReportDetail(taskId) {
+  if (!reportDetail) return;
+  if (selectedReportTaskId === taskId && !reportDetail.classList.contains('hidden')) {
+    selectedReportTaskId = null;
+    reportDetail.classList.add('hidden');
+    reportDetail.innerHTML = '';
+    return;
+  }
+
+  const run = reportRuns.find((item) => item.task_id === taskId);
+  if (!run) return;
+  selectedReportTaskId = taskId;
+  const status = getReportRunStatus(run);
+  const durationMs = getReportRunDurationMs(run);
+  const detailItems = [
+    ['Task ID', run.task_id],
+    ['Agent', getReportText(run, 'agent_id', run.device_id || '--')],
+    ['Device Serial', getReportText(run, 'device_serial', run.device_id || '--')],
+    ['Software Version', getReportText(run, 'software_version')],
+    ['Script Version', getReportText(run, 'script_version')],
+    ['Script', run.script_name || '--'],
+    ['Started At', formatTimestamp(run.started_at)],
+    ['Duration', durationMs === null ? '--:--' : formatDuration(durationMs)],
+    ['Status', status],
+  ];
+  const statRows = Object.entries(run.stats || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, entry]) => `
+      <tr>
+        <td class="report-mono">${escapeHtml(key)}</td>
+        <td>${escapeHtml(formatStatValue(entry?.value))}</td>
+        <td>${escapeHtml(entry?.type || '')}</td>
+        <td>${escapeHtml(formatTimestamp(entry?.updatedAt))}</td>
+      </tr>
+    `).join('');
+
+  reportDetail.innerHTML = `
+    <h3>Task ${escapeHtml(run.task_id)}</h3>
+    <div class="report-detail-grid">
+      ${detailItems.map(([label, value]) => `
+        <div class="stat-tile">
+          <span class="stat-label">${escapeHtml(label)}</span>
+          <strong class="stat-value">${escapeHtml(value)}</strong>
+        </div>
+      `).join('')}
+    </div>
+    <table class="report-detail-table">
+      <thead>
+        <tr>
+          <th>Stat</th>
+          <th>Value</th>
+          <th>Type</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>${statRows || '<tr><td colspan="4" class="report-empty">No stats.</td></tr>'}</tbody>
+    </table>
+  `;
+  reportDetail.classList.remove('hidden');
+}
+
+async function loadReportOptions() {
+  if (!authToken) return;
+  try {
+    const data = await apiRequest('/api/reports/options');
+    const options = data.options || {};
+    populateReportSelect(reportAgentSelect, options.agents, 'All agents');
+    populateReportSelect(reportDeviceSelect, options.devices, 'All devices');
+    populateReportSelect(reportScriptSelect, options.scripts, 'All scripts');
+    populateReportSelect(reportSoftwareSelect, options.softwareVersions, 'All versions');
+    populateReportSelect(reportStatusSelect, options.statuses, 'All statuses');
+  } catch (err) {
+    console.warn('Failed to load report options:', err);
+  }
+}
+
+async function loadReports() {
+  if (!authToken || !reportRunsBody) return;
+  setReportStatus('Loading reports...');
+  try {
+    const data = await apiRequest(`/api/reports/task-summary${buildReportQuery()}`);
+    reportRuns = data.runs || [];
+    selectedReportTaskId = null;
+    renderReportSummary(data.summary || {});
+    renderReportTable();
+    if (reportDetail) {
+      reportDetail.classList.add('hidden');
+      reportDetail.innerHTML = '';
+    }
+    setReportStatus(data.dbReady ? `Showing latest ${reportRuns.length} task runs.` : 'Database is not ready.');
+  } catch (err) {
+    console.warn('Failed to load reports:', err);
+    reportRuns = [];
+    renderReportSummary({});
+    renderReportTable();
+    setReportStatus('Failed to load reports.', true);
+  }
+}
+
 function resolveTaskDeviceId(msg) {
   if (msg.deviceId) {
     return msg.deviceId;
@@ -1073,6 +1356,8 @@ function handleAirtestTaskResult(msg) {
   if (deviceId) {
     clearDeviceTask(deviceId, msg.task_id);
   }
+  loadReportOptions();
+  loadReports();
 }
 
 function handleAirtestTaskEvent(msg) {
@@ -1187,6 +1472,15 @@ if (passwordInput) passwordInput.addEventListener('keydown', (e) => { if (e.key 
 if (logoutButton) logoutButton.addEventListener('click', logout);
 if (airtestLogsClearBtn) airtestLogsClearBtn.addEventListener('click', clearAirtestLogs);
 if (airtestStatsResetBtn) airtestStatsResetBtn.addEventListener('click', resetAirtestStats);
+if (reportRefreshBtn) {
+  reportRefreshBtn.addEventListener('click', () => {
+    loadReportOptions();
+    loadReports();
+  });
+}
+[reportFromDate, reportToDate, reportAgentSelect, reportDeviceSelect, reportScriptSelect, reportSoftwareSelect, reportStatusSelect]
+  .filter(Boolean)
+  .forEach((control) => control.addEventListener('change', loadReports));
 
 document.addEventListener('DOMContentLoaded', () => {
   const loadingOverlay = document.getElementById('loadingOverlay');
