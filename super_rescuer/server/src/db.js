@@ -135,6 +135,15 @@ async function finishTaskRun(result) {
 async function applyTaskStat(taskId, deviceId, parsed) {
   if (!taskId || !parsed?.key) return;
 
+  // 確保 task_runs 記錄存在，避免腳本早期 [STAT] 因 FK 違反而靜默失敗
+  // （race condition：task_runs INSERT 是非同步的，腳本可能比 DB 先跑到）
+  await query(
+    `INSERT INTO task_runs (task_id, device_id, status, started_at, updated_at)
+     VALUES ($1, $2, 'running', NOW(), NOW())
+     ON CONFLICT (task_id) DO NOTHING`,
+    [taskId, deviceId || null]
+  );
+
   if (parsed.op === 'add') {
     await query(
       `
