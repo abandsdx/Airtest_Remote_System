@@ -1127,12 +1127,17 @@ wssDevice.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'log' && deviceId) {
+        // 自動補齊 taskId：如果 Agent 沒送，就從 Server 的 deviceTaskMap 拿
+        const taskId = msg.task_id || deviceTaskMap.get(deviceId);
+        
         taskDb.recordStatLines({
-          taskId: msg.task_id,
+          taskId: taskId,
           deviceId,
           text: msg.message || msg.text || '',
         }).catch((err) => console.warn('[DB] Failed to persist task stats:', err.message));
-        broadcastToOperators({ ...msg, deviceId });
+        
+        // 推播給前端時也確保有 taskId，方便前端 UI 對接
+        broadcastToOperators({ ...msg, task_id: taskId, deviceId });
         return;
       }
 
