@@ -241,6 +241,15 @@ async function getTaskStats(taskId) {
   return result?.rows || [];
 }
 
+async function getRunningTaskId(deviceId) {
+  if (!deviceId) return null;
+  const result = await query(
+    `SELECT task_id FROM task_runs WHERE device_id = $1 AND status = 'running' ORDER BY started_at DESC LIMIT 1`,
+    [deviceId]
+  );
+  return result?.rows?.[0]?.task_id || null;
+}
+
 function isReady() {
   return ready;
 }
@@ -254,4 +263,5 @@ module.exports = {
   recordStatLines,
   listTaskRuns,
   getTaskStats,
+  getRunningTaskId,
 };
