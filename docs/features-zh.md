@@ -529,3 +529,45 @@ Agent：
 - 資料夾上傳會壓成 ZIP，不會在 Server 上保留原始目錄樹作為獨立資料夾。
 - Uploaded Scripts 可以管理上傳項目，但目前沒有搜尋、分頁、標籤或版本管理。
 - Stop 不會清理 Android 裝置上已經被測試腳本改變的狀態。
+
+## 任務歷史與統計資料
+
+Server 會把任務歷史與 `[STAT]` 寫入獨立 Postgres DB。這不是假資料，也沒有預先塞入 demo seed；只有真實任務事件會產生資料。
+
+任務開始時，Server 在 `task_runs` 建立一筆資料：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `task_id` | Web Console 產生的任務 ID |
+| `device_id` | 執行任務的 Agent ID |
+| `script_id` | Uploaded Script ID |
+| `script_name` | 執行的腳本檔名 |
+| `status` | `running`、`succeeded`、`failed`、`stopped` 等 |
+| `started_at` | 任務開始時間 |
+| `ended_at` | 任務結束時間 |
+| `duration_ms` | 任務耗時 |
+| `message` | Agent 回傳的結果訊息 |
+| `files` | Agent 上傳的 artifact 欄位 |
+
+當 Agent log 出現 `[STAT]` 時，Server 會寫入 `task_stats`：
+
+```python
+print("[STAT] total_tables +1")
+print("[STAT] last_table = A7")
+print("[STAT] room_id = 0103")
+```
+
+資料會以 key/value 方式保存，不會因為不同專案新增欄位：
+
+| task_id | stat_key | stat_value | stat_number | stat_type |
+| --- | --- | --- | --- | --- |
+| `1778746680238` | `total_tables` | `NULL` | `15` | `number` |
+| `1778746680238` | `last_table` | `A7` | `NULL` | `text` |
+| `1778746680238` | `room_id` | `0103` | `NULL` | `text` |
+
+查詢 API：
+
+| API | 說明 |
+| --- | --- |
+| `GET /api/task-runs?limit=50` | 最近任務歷史 |
+| `GET /api/task-runs/:id/stats` | 指定任務的 `[STAT]` 統計 |

@@ -18,6 +18,8 @@ fi
 : "${SUPER_RESCUER_DATA_DIR:=/opt/super-rescuer/data}"
 : "${SUPER_RESCUER_RECORDINGS_DIR:=/opt/super-rescuer/recordings}"
 : "${SUPER_RESCUER_SCRIPTS_DIR:=/opt/super-rescuer/scripts}"
+: "${SUPER_RESCUER_DB_DIR:=/opt/super-rescuer/db}"
+: "${SUPER_RESCUER_DB_PASSWORD:=super_rescuer_pass}"
 
 export RIDER_HOST_PORT
 export RIDER_BIND_ADDR
@@ -26,6 +28,8 @@ export WS_FRAME_DEBUG
 export SUPER_RESCUER_DATA_DIR
 export SUPER_RESCUER_RECORDINGS_DIR
 export SUPER_RESCUER_SCRIPTS_DIR
+export SUPER_RESCUER_DB_DIR
+export SUPER_RESCUER_DB_PASSWORD
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is not installed or not in PATH."
@@ -45,6 +49,7 @@ echo "Bind address: ${RIDER_BIND_ADDR}"
 echo "Data dir: ${SUPER_RESCUER_DATA_DIR}"
 echo "Recordings dir: ${SUPER_RESCUER_RECORDINGS_DIR}"
 echo "Scripts dir: ${SUPER_RESCUER_SCRIPTS_DIR}"
+echo "DB dir: ${SUPER_RESCUER_DB_DIR}"
 
 docker compose up -d --build server
 

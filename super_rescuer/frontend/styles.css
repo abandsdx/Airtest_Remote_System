@@ -351,6 +351,78 @@ button.compact {
   margin-top: 0;
 }
 
+/* Task Stats */
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.stat-tile {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.stat-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.stats-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+
+.stat-key {
+  min-width: 0;
+  color: var(--ink-light);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.stat-row-value {
+  color: var(--ink);
+  font-size: 15px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.stats-empty {
+  grid-column: 1 / -1;
+  padding: 14px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+  text-align: center;
+}
+
 /* WebSocket 狀態 */
 .ws-status {
   display: inline-block;

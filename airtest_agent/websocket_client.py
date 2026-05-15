@@ -46,7 +46,7 @@ class AgentClient:
         return {"X-Device-Key": self.config.device_shared_key}
 
     async def _send_log(self, text: str) -> None:
-        await self.send({"type": "log", "message": text})
+        await self.send({"type": "log", "task_id": self._current_task_id, "message": text})
 
     async def send(self, payload: Dict[str, Any]) -> None:
         if not self.ws:

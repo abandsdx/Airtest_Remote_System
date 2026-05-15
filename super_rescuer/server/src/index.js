@@ -8,6 +8,7 @@ const multer = require('multer');
 const JSZip = require('jszip');
 
 const store = require('./store');
+const taskDb = require('./db');
 
 const port = Number(process.env.PORT || 3000);
 const deviceSharedKey = process.env.DEVICE_SHARED_KEY || 'rider-dev-key';
@@ -422,6 +423,24 @@ app.get('/api/audits', authRequired, (req, res) => {
   res.json({ audits: store.data.audits.slice(-500) });
 });
 
+app.get('/api/task-runs', authRequired, async (req, res) => {
+  try {
+    const runs = await taskDb.listTaskRuns(req.query.limit);
+    res.json({ dbReady: taskDb.isReady(), runs });
+  } catch (err) {
+    res.status(500).json({ error: 'task_runs_query_failed', message: err.message });
+  }
+});
+
+app.get('/api/task-runs/:id/stats', authRequired, async (req, res) => {
+  try {
+    const stats = await taskDb.getTaskStats(req.params.id);
+    res.json({ dbReady: taskDb.isReady(), stats });
+  } catch (err) {
+    res.status(500).json({ error: 'task_stats_query_failed', message: err.message });
+  }
+});
+
 function serializeScript(script) {
   let size = script.size;
   let fileExists = false;
@@ -688,24 +707,33 @@ app.post(
   deviceOrUserAuthRequired,
   reportUploads.fields([{ name: 'log_file', maxCount: 1 }, { name: 'report_file', maxCount: 1 }]),
   (req, res) => {
-  const taskId = req.params.id;
-  const status = req.body.status;
-  const message = req.body.message;
-  const deviceId = req.body.device_id || req.body.deviceId || null;
+    const taskId = req.params.id;
+    const status = req.body.status;
+    const message = req.body.message;
+    const deviceId = req.body.device_id || req.body.deviceId || null;
+    const files = req.files ? Object.keys(req.files) : [];
 
-  // Here we could store the result info into `store.js`
-  // But for simple notification, we broadcast it to operators
-  broadcastToOperators({
-    type: 'task_result',
-    task_id: taskId,
-    deviceId,
-    status,
-    message,
-    files: req.files ? Object.keys(req.files) : []
+    taskDb.finishTaskRun({
+      task_id: taskId,
+      deviceId,
+      status,
+      message,
+      files,
+    }).catch((err) => console.warn('[DB] Failed to persist task result upload:', err.message));
+
+    // Here we could store the result info into `store.js`
+    // But for simple notification, we broadcast it to operators
+    broadcastToOperators({
+      type: 'task_result',
+      task_id: taskId,
+      deviceId,
+      status,
+      message,
+      files
+    });
+
+    return res.json({ success: true });
   });
-
-  return res.json({ success: true });
-});
 
 const server = http.createServer(app);
 
@@ -792,7 +820,7 @@ setInterval(() => {
   operators.forEach((ws) => {
     if (ws.readyState !== ws.OPEN) {
       operators.delete(ws);
-      
+
       return;
     }
 
@@ -800,7 +828,7 @@ setInterval(() => {
       console.log(`WS operator ping timeout, terminating`);
       ws.terminate();
       operators.delete(ws);
-      
+
       return;
     }
 
@@ -960,16 +988,16 @@ function updateDeviceState(deviceId, online, info) {
     manufacturer: info?.manufacturer,
     osVersion: info?.osVersion,
     appVersion: info?.appVersion,
-    
-    
-    
+
+
+
     online,
     lastSeen: Date.now(),
   });
   const patch = { online };
-  
-  
-  
+
+
+
   store.updateDeviceStatus(deviceId, patch);
 
   const device = store.data.devices.find((item) => item.deviceId === deviceId);
@@ -1032,9 +1060,9 @@ wssDevice.on('connection', (ws, req) => {
 
         devices.set(deviceId, {
           ws,
-          
-          
-          
+
+
+
         });
 
         updateDeviceState(deviceId, true, msg.info);
@@ -1098,7 +1126,29 @@ wssDevice.on('connection', (ws, req) => {
         return;
       }
 
-      if (['log', 'task_result', 'task_event', 'input_prompt'].includes(msg.type) && deviceId) {
+      if (msg.type === 'log' && deviceId) {
+        taskDb.recordStatLines({
+          taskId: msg.task_id,
+          deviceId,
+          text: msg.message || msg.text || '',
+        }).catch((err) => console.warn('[DB] Failed to persist task stats:', err.message));
+        broadcastToOperators({ ...msg, deviceId });
+        return;
+      }
+
+      if (msg.type === 'task_result' && deviceId) {
+        taskDb.finishTaskRun({
+          task_id: msg.task_id,
+          deviceId,
+          status: msg.status,
+          message: msg.message,
+          files: msg.files || null,
+        }).catch((err) => console.warn('[DB] Failed to persist task result:', err.message));
+        broadcastToOperators({ ...msg, deviceId });
+        return;
+      }
+
+      if (['task_event', 'input_prompt'].includes(msg.type) && deviceId) {
         broadcastToOperators({ ...msg, deviceId });
         return;
       }
@@ -1112,7 +1162,7 @@ wssDevice.on('connection', (ws, req) => {
       return;
     }
 
-    });
+  });
 
   ws.on('close', (code, reason) => {
     if (wsFrameDebug) {
@@ -1182,7 +1232,7 @@ wssOperator.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'watch') {
-      
+
       const entry = devices.get(msg.deviceId);
       if (!entry) {
         sendText(ws, { type: 'watch-failed', reason: 'offline' });
@@ -1200,13 +1250,17 @@ wssOperator.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'unwatch') {
-      
+
       sendText(ws, { type: 'unwatch-ok' });
       return;
     }
 
     if (['control', 'service', 'run_task', 'stop_task', 'stdin_input'].includes(msg.type)) {
       const outbound = msg.type === 'run_task' ? enrichRunTaskMessage(msg) : msg;
+      if (msg.type === 'run_task') {
+        taskDb.recordTaskStart(outbound)
+          .catch((err) => console.warn('[DB] Failed to persist task start:', err.message));
+      }
       sendToDevice(msg.deviceId, JSON.stringify(outbound));
     }
   });
@@ -1220,7 +1274,7 @@ wssOperator.on('connection', (ws, req) => {
       ws.authTimeout = null;
     }
     operators.delete(ws);
-    
+
   });
 
   ws.on('error', (err) => {
@@ -1230,6 +1284,12 @@ wssOperator.on('connection', (ws, req) => {
   });
 });
 
-server.listen(port, () => {
-  console.log(`Server started on port ${port}`);
-});
+taskDb.init()
+  .catch((err) => {
+    console.warn('[DB] Task history database is unavailable:', err.message);
+  })
+  .finally(() => {
+    server.listen(port, () => {
+      console.log(`Server started on port ${port}`);
+    });
+  });

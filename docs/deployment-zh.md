@@ -149,6 +149,8 @@ bash deploy-web.sh
 | `SUPER_RESCUER_DATA_DIR` | `/opt/super-rescuer/data` | Server `store.json` 與持久化資料位置 |
 | `SUPER_RESCUER_RECORDINGS_DIR` | `/opt/super-rescuer/recordings` | recordings volume，目前保留給系統資料 |
 | `SUPER_RESCUER_SCRIPTS_DIR` | `/opt/super-rescuer/scripts` | Uploaded Scripts 實體檔案持久化位置 |
+| `SUPER_RESCUER_DB_DIR` | `/opt/super-rescuer/db` | Postgres 任務歷史與統計資料位置 |
+| `SUPER_RESCUER_DB_PASSWORD` | `super_rescuer_pass` | Postgres `super_rescuer` 使用者密碼，正式環境請修改 |
 | `ALLOWED_ORIGINS` | `*` | CORS 允許來源；正式環境建議指定網域 |
 | `WS_FRAME_DEBUG` | `1` | WebSocket frame debug log |
 
@@ -295,6 +297,7 @@ Android://127.0.0.1:5037/<serial>
 
 - `SUPER_RESCUER_DATA_DIR`：包含 `store.json`。
 - `SUPER_RESCUER_SCRIPTS_DIR`：包含 Uploaded Scripts 的 `.zip` 與資料夾上傳後產生的 ZIP。
+- `SUPER_RESCUER_DB_DIR`：包含 Postgres 任務歷史與 `[STAT]` 統計資料。
 - Agent 端 `AGENT_DATA`：包含下載腳本、執行 log 與 report zip。
 
 建議正式環境：
@@ -304,7 +307,40 @@ Android://127.0.0.1:5037/<serial>
 - 限制 `ALLOWED_ORIGINS`。
 - 用 reverse proxy 提供 HTTPS。
 - 定期備份上傳腳本持久化 volume。
-- 定期備份 `store.json` 與上傳腳本。
+- 定期備份 `store.json`、上傳腳本與 Postgres DB。
+
+### 任務歷史 DB 驗證
+
+部署後會多一個獨立 Postgres container：
+
+```text
+super-rescuer-db
+```
+
+確認 DB container：
+
+```bash
+docker ps --filter name=super-rescuer-db
+```
+
+查任務表：
+
+```bash
+docker exec -it super-rescuer-db psql -U super_rescuer -d super_rescuer -c "select task_id, device_id, script_name, status, duration_ms from task_runs order by started_at desc limit 10;"
+```
+
+查單次任務 `[STAT]`：
+
+```bash
+docker exec -it super-rescuer-db psql -U super_rescuer -d super_rescuer -c "select task_id, stat_key, stat_value, stat_number, stat_type from task_stats order by updated_at desc limit 20;"
+```
+
+也可以用 Web API 查：
+
+```bash
+curl -H "Authorization: Bearer <login-token>" http://127.0.0.1:13000/api/task-runs
+curl -H "Authorization: Bearer <login-token>" http://127.0.0.1:13000/api/task-runs/<task-id>/stats
+```
 
 ## 8. 常見問題
 

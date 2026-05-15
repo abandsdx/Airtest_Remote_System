@@ -107,6 +107,7 @@ python -m airtest_agent.main
 
 - Server 狀態資料：Docker 內 `/usr/src/app/data/store.json`，預設掛載到主機 `/opt/super-rescuer/data`。
 - 上傳腳本：Docker 內 `/usr/src/app/scripts`，預設掛載到主機 `/opt/super-rescuer/scripts`。
+- 任務歷史與 `[STAT]` 統計：獨立 Postgres container，預設掛載到主機 `/opt/super-rescuer/db`。
 - Agent 工作目錄：由 `AGENT_DATA` 控制；未設定時為 `/tmp/airtest_agent`。
 - Agent log/report：每次任務會在 Agent 工作目錄中產生 stdout log 與 report zip，並上傳任務結果到 Server。
 

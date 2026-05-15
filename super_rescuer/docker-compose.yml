@@ -13,8 +13,28 @@
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-*}"
       WS_FRAME_DEBUG: "${WS_FRAME_DEBUG:-1}"
       SCRIPTS_DIR: "/usr/src/app/scripts"
+      DATABASE_URL: "postgres://super_rescuer:${SUPER_RESCUER_DB_PASSWORD:-super_rescuer_pass}@db:5432/super_rescuer"
     volumes:
       - "${SUPER_RESCUER_DATA_DIR:-/opt/super-rescuer/data}:/usr/src/app/data"
       - "${SUPER_RESCUER_RECORDINGS_DIR:-/opt/super-rescuer/recordings}:/usr/src/app/recordings"
       - "${SUPER_RESCUER_SCRIPTS_DIR:-/opt/super-rescuer/scripts}:/usr/src/app/scripts"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: super-rescuer-db
+    environment:
+      POSTGRES_DB: super_rescuer
+      POSTGRES_USER: super_rescuer
+      POSTGRES_PASSWORD: "${SUPER_RESCUER_DB_PASSWORD:-super_rescuer_pass}"
+    volumes:
+      - "${SUPER_RESCUER_DB_DIR:-/opt/super-rescuer/db}:/var/lib/postgresql/data"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U super_rescuer -d super_rescuer"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped

@@ -31,6 +31,9 @@ const airtestScriptList = document.getElementById('airtestScriptList');
 const airtestScriptCount = document.getElementById('airtestScriptCount');
 const airtestLogsOutput = document.getElementById('airtestLogsOutput');
 const airtestLogsClearBtn = document.getElementById('airtestLogsClearBtn');
+const airtestStatsResetBtn = document.getElementById('airtestStatsResetBtn');
+const airtestStatsSummary = document.getElementById('airtestStatsSummary');
+const airtestCustomStats = document.getElementById('airtestCustomStats');
 const stdinInputArea = document.getElementById('stdinInputArea');
 const stdinPromptLabel = document.getElementById('stdinPromptLabel');
 const stdinInputField = document.getElementById('stdinInputField');
@@ -56,6 +59,18 @@ let currentDeviceId = null;
 let currentUser = null;
 const activeTasks = {};
 const taskDeviceIndex = {};
+const airtestStatsState = {
+  totals: {
+    runs: 0,
+    succeeded: 0,
+    failed: 0,
+    stopped: 0,
+  },
+  byDevice: {},
+  lastDeviceId: null,
+  completedTasks: new Set(),
+};
+let airtestStatsTimer = null;
 
 const STORAGE_TOKEN_KEY = 'riderAuthToken';
 const STORAGE_URL_KEY = 'riderServerUrl';
@@ -131,6 +146,25 @@ function formatBytes(value) {
     unitIndex += 1;
   }
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function formatDuration(value) {
+  if (typeof value !== 'number' || Number.isNaN(value) || value < 0) return '--:--';
+  const totalSeconds = Math.floor(value / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatStatValue(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+  return String(value ?? '');
 }
 
 function getUploadRelativePath(file) {
@@ -315,6 +349,7 @@ function renderDevices() {
       currentDeviceId = device.deviceId;
       renderDevices();
       updateAirtestControls();
+      renderAirtestStats();
     });
     const stopTaskButton = card.querySelector('.device-stop-task');
     if (stopTaskButton) {
@@ -374,7 +409,7 @@ function scheduleWsReconnect() {
 
 function connectWebSocket() {
   if (ws) {
-    try { ws.close(); } catch (_) {}
+    try { ws.close(); } catch (_) { }
     ws = null;
   }
   stopWsHeartbeat();
@@ -700,6 +735,7 @@ if (airtestRunBtn) {
     }
 
     const taskId = Date.now().toString();
+    beginAirtestStats(currentDeviceId, taskId, selectedScript?.filename || scriptId);
     setDeviceTask(currentDeviceId, taskId, 'running');
     appendAirtestLog(`\n[System][${currentDeviceId}][${taskId}] Starting task with script ${scriptId}...\n`);
 
@@ -714,6 +750,7 @@ if (airtestRunBtn) {
         vars: vars
       }));
     } catch (err) {
+      finishAirtestStats(currentDeviceId, taskId, 'failed');
       clearDeviceTask(currentDeviceId, taskId);
       appendAirtestLog(`[System] Failed to send task: ${err.message}\n`);
     }
@@ -768,6 +805,201 @@ function updateAirtestControls() {
   }
 }
 
+function getDeviceStats(deviceId) {
+  if (!deviceId) return null;
+  if (!airtestStatsState.byDevice[deviceId]) {
+    airtestStatsState.byDevice[deviceId] = {
+      current: null,
+      last: null,
+      custom: {},
+    };
+  }
+  return airtestStatsState.byDevice[deviceId];
+}
+
+function beginAirtestStats(deviceId, taskId, scriptName) {
+  const stats = getDeviceStats(deviceId);
+  if (!stats) return;
+  airtestStatsState.lastDeviceId = deviceId;
+  stats.custom = {};
+  stats.current = {
+    taskId,
+    scriptName,
+    status: 'running',
+    startedAt: Date.now(),
+    endedAt: null,
+  };
+  stats.last = stats.current;
+  airtestStatsState.totals.runs += 1;
+  renderAirtestStats();
+  ensureAirtestStatsTimer();
+}
+
+function finishAirtestStats(deviceId, taskId, status) {
+  const stats = getDeviceStats(deviceId);
+  if (!stats) return;
+  airtestStatsState.lastDeviceId = deviceId || airtestStatsState.lastDeviceId;
+
+  const taskKey = taskId ? `${deviceId || 'unknown'}:${taskId}` : null;
+  const alreadyCompleted = taskKey && airtestStatsState.completedTasks.has(taskKey);
+  const current = stats.current && (!taskId || stats.current.taskId === taskId)
+    ? stats.current
+    : stats.last;
+
+  if (current && (!taskId || current.taskId === taskId)) {
+    current.status = status || 'completed';
+    current.endedAt = current.endedAt || Date.now();
+    stats.last = current;
+    if (stats.current && stats.current.taskId === current.taskId) {
+      stats.current = null;
+    }
+  }
+
+  if (!alreadyCompleted) {
+    if (['succeeded', 'success', 'passed'].includes(status)) airtestStatsState.totals.succeeded += 1;
+    else if (status === 'stopped') airtestStatsState.totals.stopped += 1;
+    else airtestStatsState.totals.failed += 1;
+    if (taskKey) airtestStatsState.completedTasks.add(taskKey);
+  }
+
+  renderAirtestStats();
+  stopAirtestStatsTimerIfIdle();
+}
+
+function ensureAirtestStatsTimer() {
+  if (airtestStatsTimer) return;
+  airtestStatsTimer = setInterval(renderAirtestStats, 1000);
+}
+
+function stopAirtestStatsTimerIfIdle() {
+  const hasRunning = Object.values(airtestStatsState.byDevice).some((stats) => stats.current);
+  if (!hasRunning && airtestStatsTimer) {
+    clearInterval(airtestStatsTimer);
+    airtestStatsTimer = null;
+  }
+}
+
+function resetAirtestStats() {
+  airtestStatsState.totals.runs = 0;
+  airtestStatsState.totals.succeeded = 0;
+  airtestStatsState.totals.failed = 0;
+  airtestStatsState.totals.stopped = 0;
+  airtestStatsState.byDevice = {};
+  airtestStatsState.lastDeviceId = null;
+  airtestStatsState.completedTasks.clear();
+  stopAirtestStatsTimerIfIdle();
+  renderAirtestStats();
+}
+
+function getVisibleStatsDeviceId() {
+  if (currentDeviceId && airtestStatsState.byDevice[currentDeviceId]) {
+    return currentDeviceId;
+  }
+  return airtestStatsState.lastDeviceId;
+}
+
+function renderAirtestStats() {
+  if (!airtestStatsSummary || !airtestCustomStats) return;
+
+  const deviceId = getVisibleStatsDeviceId();
+  const stats = deviceId ? airtestStatsState.byDevice[deviceId] : null;
+  const task = stats?.current || stats?.last || null;
+  const now = Date.now();
+  const duration = task
+    ? (task.endedAt || now) - task.startedAt
+    : null;
+  const finished = airtestStatsState.totals.succeeded + airtestStatsState.totals.failed + airtestStatsState.totals.stopped;
+  const successRate = finished > 0
+    ? `${Math.round((airtestStatsState.totals.succeeded / finished) * 100)}%`
+    : '--';
+  const summaryItems = [
+    ['Device', deviceId || '--'],
+    ['Status', task?.status || 'idle'],
+    ['Duration', duration === null ? '--:--' : formatDuration(duration)],
+    ['Runs', airtestStatsState.totals.runs],
+    ['Success Rate', successRate],
+    ['Script', task?.scriptName || '--'],
+  ];
+
+  airtestStatsSummary.innerHTML = summaryItems.map(([label, value]) => `
+    <div class="stat-tile">
+      <span class="stat-label">${escapeHtml(label)}</span>
+      <strong class="stat-value">${escapeHtml(value)}</strong>
+    </div>
+  `).join('');
+
+  const customEntries = Object.entries(stats?.custom || {});
+  if (!customEntries.length) {
+    airtestCustomStats.innerHTML = '<div class="stats-empty">No custom stats.</div>';
+    return;
+  }
+
+  airtestCustomStats.innerHTML = customEntries
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, entry]) => `
+      <div class="stat-row">
+        <span class="stat-key">${escapeHtml(key)}</span>
+        <strong class="stat-row-value">${escapeHtml(formatStatValue(entry.value))}</strong>
+      </div>
+    `).join('');
+}
+
+function parseStatLine(line) {
+  const statIndex = line.indexOf('[STAT]');
+  if (statIndex < 0) return null;
+  const body = line.slice(statIndex + 6).trim();
+  const assignMatch = body.match(/^([A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
+  if (assignMatch) {
+    return {
+      key: assignMatch[1],
+      op: 'set',
+      value: assignMatch[2].trim(),
+    };
+  }
+
+  const addMatch = body.match(/^([A-Za-z0-9_.-]+)\s*([+-])=?\s*(\d+(?:\.\d+)?)$/);
+  if (addMatch) {
+    const amount = Number(addMatch[3]) * (addMatch[2] === '-' ? -1 : 1);
+    return {
+      key: addMatch[1],
+      op: 'add',
+      value: amount,
+    };
+  }
+
+  return null;
+}
+
+function applyStatLine(deviceId, line) {
+  const parsed = parseStatLine(line);
+  if (!parsed) return false;
+  const stats = getDeviceStats(deviceId || airtestStatsState.lastDeviceId || 'unknown-device');
+  if (!stats) return false;
+
+  airtestStatsState.lastDeviceId = deviceId || airtestStatsState.lastDeviceId;
+  const currentEntry = stats.custom[parsed.key];
+  if (parsed.op === 'add') {
+    const base = typeof currentEntry?.value === 'number' ? currentEntry.value : Number(currentEntry?.value || 0);
+    stats.custom[parsed.key] = {
+      value: (Number.isNaN(base) ? 0 : base) + parsed.value,
+      updatedAt: Date.now(),
+    };
+  } else {
+    stats.custom[parsed.key] = {
+      value: parsed.value,
+      updatedAt: Date.now(),
+    };
+  }
+  renderAirtestStats();
+  return true;
+}
+
+function processStatLines(deviceId, text) {
+  String(text || '').split(/\r?\n/).forEach((line) => {
+    applyStatLine(deviceId, line);
+  });
+}
+
 function requestStopTask(deviceId) {
   const task = activeTasks[deviceId];
   if (!task) {
@@ -818,12 +1050,14 @@ function appendDeviceLog(msg) {
   const deviceId = resolveTaskDeviceId(msg) || 'unknown-device';
   const text = msg.message || msg.text || '';
   const suffix = text.endsWith('\n') ? '' : '\n';
+  processStatLines(deviceId, text);
   appendAirtestLog(`[${deviceId}] ${text}${suffix}`);
 }
 
 function handleAirtestTaskResult(msg) {
   const deviceId = resolveTaskDeviceId(msg);
   const prefix = deviceId ? `[${deviceId}][${msg.task_id}]` : `[${msg.task_id}]`;
+  finishAirtestStats(deviceId, msg.task_id, msg.status);
   appendAirtestLog(`\n[System]${prefix} Task completed with status: ${msg.status}\n`);
   if (msg.message) {
     appendAirtestLog(`[System] Message: ${msg.message}\n`);
@@ -890,6 +1124,7 @@ if (loginButton) loginButton.addEventListener('click', login);
 if (passwordInput) passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
 if (logoutButton) logoutButton.addEventListener('click', logout);
 if (airtestLogsClearBtn) airtestLogsClearBtn.addEventListener('click', clearAirtestLogs);
+if (airtestStatsResetBtn) airtestStatsResetBtn.addEventListener('click', resetAirtestStats);
 
 document.addEventListener('DOMContentLoaded', () => {
   const loadingOverlay = document.getElementById('loadingOverlay');
@@ -901,7 +1136,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 500);
     }, 800);
   }
-  
+
+  renderAirtestStats();
   restoreSession();
 });
 
