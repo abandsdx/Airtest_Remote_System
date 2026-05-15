@@ -130,6 +130,17 @@ async function finishTaskRun(result) {
       files ? JSON.stringify(files) : null,
     ]
   );
+
+  // 任務結束時，把 stdout tail (message) 裡的 [STAT] 行也存入 task_stats
+  if (result.message && result.task_id) {
+    const statLines = String(result.message).split(/\r?\n/);
+    for (const line of statLines) {
+      const parsed = parseStatLine(line);
+      if (parsed) {
+        await applyTaskStat(result.task_id, result.deviceId || null, parsed).catch(() => {});
+      }
+    }
+  }
 }
 
 async function applyTaskStat(taskId, deviceId, parsed) {
@@ -177,7 +188,12 @@ async function applyTaskStat(taskId, deviceId, parsed) {
 }
 
 async function recordStatLines({ taskId, deviceId, text }) {
-  if (!taskId || !text) return;
+  // DEBUG: 確認 taskId 是否有值
+  if (!taskId) {
+    console.warn('[DB][STAT] recordStatLines called with no taskId! text snippet:', String(text || '').slice(0, 80));
+    return;
+  }
+  if (!text) return;
   const lines = String(text).split(/\r?\n/);
   for (const line of lines) {
     const parsed = parseStatLine(line);
